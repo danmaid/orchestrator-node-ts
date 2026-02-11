@@ -1,0 +1,226 @@
+
+openapi: 3.1.0
+info:
+  title: Orchestrator API
+  version: 0.1.0
+  description: |
+    SSE 対応のオーケストレータ API。`/v1/orchestrator` を起点に、inputs/outputs/workflows を管理します。
+servers:
+  - url: /v1/orchestrator
+paths:
+  /health:
+    get:
+      summary: ヘルスチェック
+      responses:
+        '200':
+          description: OK
+  /inputs:
+    get:
+      summary: 入力バッファの参照
+      responses:
+        '200': { description: OK }
+    post:
+      summary: 入力イベントの投入
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [source, topic]
+              properties:
+                source: { type: string }
+                topic: { type: string }
+                type: { type: string }
+                payload: { }
+                meta: { type: object }
+      responses:
+        '202': { description: Accepted }
+  /inputs/stream:
+    get:
+      summary: 入力イベントの SSE ストリーム
+      responses:
+        '200': { description: text/event-stream }
+  /outputs:
+    get:
+      summary: 出力バッファの参照
+      responses:
+        '200': { description: OK }
+  /outputs/stream:
+    get:
+      summary: 出力イベントの SSE ストリーム
+      responses:
+        '200': { description: text/event-stream }
+  /workflows:
+    get:
+      summary: ワークフロー一覧取得
+      responses:
+        '200': { description: OK }
+    post:
+      summary: ワークフロー作成
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Workflow'
+      responses:
+        '201': { description: Created }
+  /workflows/stream:
+    get:
+      summary: ワークフローステータスの SSE ストリーム
+      responses:
+        '200': { description: text/event-stream }
+  /workflows/{id}:
+    get:
+      summary: ワークフロー取得
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: OK }
+        '404': { description: Not Found }
+    put:
+      summary: ワークフロー置換
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Workflow' }
+      responses:
+        '200': { description: OK }
+        '404': { description: Not Found }
+    delete:
+      summary: ワークフロー削除
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '204': { description: No Content }
+        '404': { description: Not Found }
+  /workflows/{id}/enable:
+    post:
+      summary: ワークフロー有効化
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: OK }
+        '404': { description: Not Found }
+  /workflows/{id}/disable:
+    post:
+      summary: ワークフロー無効化
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: OK }
+        '404': { description: Not Found }
+components:
+  schemas:
+    Workflow:
+      type: object
+      required: [name, enabled, steps]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        enabled: { type: boolean }
+        description: { type: string }
+        sourceTopics: { type: array, items: { type: string } }
+        steps:
+          type: array
+          items:
+            oneOf:
+              - $ref: '#/components/schemas/StepFilterEquals'
+              - $ref: '#/components/schemas/StepMapFields'
+              - $ref: '#/components/schemas/StepDebounce'
+              - $ref: '#/components/schemas/StepThrottle'
+              - $ref: '#/components/schemas/StepDelay'
+              - $ref: '#/components/schemas/StepBranch'
+              - $ref: '#/components/schemas/StepSetTopic'
+              - $ref: '#/components/schemas/StepMergeWithTopics'
+              - $ref: '#/components/schemas/StepRaceTopics'
+              - $ref: '#/components/schemas/StepTapLog'
+        outputTopic: { type: string }
+        loopbackToInput: { type: boolean }
+    StepFilterEquals:
+      type: object
+      properties:
+        type: { const: filterEquals }
+        field: { type: string }
+        value: { }
+    StepMapFields:
+      type: object
+      properties:
+        type: { const: mapFields }
+        mapping: { type: object, additionalProperties: { type: string } }
+    StepDebounce:
+      type: object
+      properties:
+        type: { const: debounce }
+        ms: { type: integer }
+    StepThrottle:
+      type: object
+      properties:
+        type: { const: throttle }
+        ms: { type: integer }
+    StepDelay:
+      type: object
+      properties:
+        type: { const: delay }
+        ms: { type: integer }
+    StepBranch:
+      type: object
+      properties:
+        type: { const: branch }
+        branches:
+          type: array
+          items:
+            type: object
+            properties:
+              when:
+                type: object
+                properties:
+                  field: { type: string }
+                  equals: { }
+              set: { type: object }
+              outputTopic: { type: string }
+        else:
+          type: object
+          properties:
+            set: { type: object }
+            outputTopic: { type: string }
+    StepSetTopic:
+      type: object
+      properties:
+        type: { const: setTopic }
+        topic: { type: string }
+    StepMergeWithTopics:
+      type: object
+      properties:
+        type: { const: mergeWithTopics }
+        topics: { type: array, items: { type: string } }
+    StepRaceTopics:
+      type: object
+      properties:
+        type: { const: raceTopics }
+        topics: { type: array, items: { type: string } }
+        windowMs: { type: integer }
+    StepTapLog:
+      type: object
+      properties:
+        type: { const: tapLog }
+        label: { type: string }

@@ -1,0 +1,101 @@
+
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Orchestrator Demo UI</title>
+  <link rel="stylesheet" href="/v1/orchestrator/styles.css" />
+</head>
+<body>
+  <header>
+    <h1>Orchestrator Demo UI</h1>
+    <nav>
+      <a href="#inputs">Inputs</a>
+      <a href="#outputs">Outputs</a>
+      <a href="#workflows">Workflows</a>
+      <a href="/v1/orchestrator/openapi.yaml" target="_blank">OpenAPI</a>
+    </nav>
+  </header>
+
+  <main>
+    <section id="inputs">
+      <h2>Inputs</h2>
+      <form id="inputForm">
+        <label>source <input name="source" value="demo-ui" required></label>
+        <label>topic <input name="topic" value="demo/topic" required></label>
+        <label>type <input name="type" value="demo"></label>
+        <label>payload(JSON) <textarea name="payload">{"message":"hello"}</textarea></label>
+        <button type="submit">Send</button>
+      </form>
+      <div class="table-wrap">
+        <table id="inputsTable">
+          <thead><tr><th>time</th><th>source</th><th>topic</th><th>type</th><th>payload</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="outputs">
+      <h2>Outputs</h2>
+      <div class="table-wrap">
+        <table id="outputsTable">
+          <thead><tr><th>time</th><th>source</th><th>topic</th><th>type</th><th>payload</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="workflows">
+      <h2>Workflows</h2>
+      <form id="wfForm">
+        <label>name <input name="name" value="wf-demo" required></label>
+        <label>enabled <input type="checkbox" name="enabled" checked></label>
+        <label>sourceTopics (comma) <input name="sourceTopics" value="demo/topic"></label>
+        <label>outputTopic <input name="outputTopic" value="demo/output"></label>
+        <label>loopback <input type="checkbox" name="loopbackToInput"></label>
+        <label>steps(JSON)
+          <textarea name="steps">[
+  {"type":"debounce","ms":200},
+  {"type":"tapLog","label":"debug"},
+  {"type":"branch","branches":[
+     {"when":{"field":"payload.message","equals":"hello"},
+      "set":{"reply":"world"},
+      "outputTopic":"demo/branch"}
+  ]}
+]</textarea></label>
+        <button type="submit">Create Workflow</button>
+      </form>
+
+      <div class="table-wrap">
+        <table id="wfTable">
+          <thead><tr><th>id</th><th>name</th><th>enabled</th><th>sourceTopics</th><th>outputTopic</th><th>actions</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <details>
+        <summary>ロジックの説明</summary>
+        <ul>
+          <li><b>filterEquals</b>: 指定フィールドが値と一致するイベントのみ通過</li>
+          <li><b>mapFields</b>: `{ 目標パス: 取得元パス }` で payload を再構成</li>
+          <li><b>debounce</b>: 直近の値のみを遅延出力 (ms)</li>
+          <li><b>throttle</b>: 高頻度入力を一定間隔で間引き (ms)</li>
+          <li><b>delay</b>: 出力を遅延 (ms)</li>
+          <li><b>setTopic</b>: イベントの topic を差し替え</li>
+          <li><b>mergeWithTopics</b>: 他トピックのイベントを合流</li>
+          <li><b>raceTopics</b>: 複数トピックのうち最初に来たストリームに追従</li>
+          <li><b>branch</b>: 条件にマッチした場合、<i>サイド出力</i>として即時に output を発行 (元イベントは流れ続けます)</li>
+          <li><b>tapLog</b>: コンソールにデバッグ出力</li>
+        </ul>
+      </details>
+    </section>
+  </main>
+
+  <footer>
+    <small>Orchestrator Demo — Node.js + TypeScript + RxJS</small>
+  </footer>
+
+  <script src="/v1/orchestrator/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,30 @@
+
+{
+  "name": "orchestrator-node-ts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SSE-enabled orchestrator with ring buffers and workflow engine (Node.js + TypeScript)",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p .",
+    "start": "node dist/index.js",
+    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "lint": "echo 'no linter configured'"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "cors": "^2.8.5",
+    "morgan": "^1.10.0",
+    "rxjs": "^7.8.1",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.11.30",
+    "@types/morgan": "^1.9.9",
+    "typescript": "^5.6.3",
+    "ts-node-dev": "^2.0.0",
+    "@types/cors": "^2.8.17",
+    "@types/uuid": "^9.0.7"
+  }
+}
