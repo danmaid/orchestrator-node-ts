@@ -50,6 +50,27 @@ export interface InputDefinition {
 
 export type ChannelName = 'inputs' | 'outputs' | 'workflows' | 'events';
 
+export type LogicType = 'builtin' | 'embedded' | 'webhook';
+
+export interface WebhookLogicConfig {
+  url: string;
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  headers?: Record<string, string>;
+  timeoutMs?: number;
+  ttlMs?: number;
+}
+
+export type LogicConfig = WebhookLogicConfig | Record<string, any> | undefined;
+
+export interface LogicDefinition {
+  id: string;
+  name: string;
+  type: LogicType;
+  enabled: boolean;
+  description?: string;
+  config?: LogicConfig;
+}
+
 export type StepDefinition =
   | { type: 'filterEquals'; field: string; value: any }
   | { type: 'mapFields'; mapping: Record<string, string> }
@@ -68,10 +89,24 @@ export type StepDefinition =
       cacheTtlMs?: number;
       concurrency?: number;
     }
+  | {
+      type: 'logic';
+      logicId: string;
+      params: Record<string, string>;
+      targetField?: string;
+      errorField?: string;
+      onError?: 'skip' | 'pass' | 'setError';
+      cacheTtlMs?: number;
+      concurrency?: number;
+    }
   | { type: 'setTopic'; topic: string }
   | { type: 'mergeWithTopics'; topics: string[] }
   | { type: 'raceTopics'; topics: string[], windowMs?: number }
   | { type: 'tapLog'; label?: string };
+
+export type WorkflowOutputDefinition =
+  | { type: 'topic'; topic?: string }
+  | { type: 'loopback'; topic?: string };
 
 export interface WorkflowDefinition {
   id: string;
@@ -81,5 +116,6 @@ export interface WorkflowDefinition {
   sourceTopics?: string[]; // if omitted, consume all inputs
   steps: StepDefinition[];
   outputTopic?: string;
-  loopbackToInput?: boolean;
+  loopbackToInput?: boolean; // legacy
+  outputs?: WorkflowOutputDefinition[];
 }

@@ -322,7 +322,7 @@
         sourceTopics: ['orders/new'],
         outputTopic: 'orders/processed',
         steps: [
-          { type: 'enrich', sourceId: 'prefectures', params: { code: 'payload.prefCode' }, targetField: 'payload.enriched.pref' },
+          { type: 'logic', logicId: 'prefectures', params: { code: 'payload.prefCode' }, targetField: 'payload.enriched.pref' },
           { type: 'tapLog', label: 'orders' }
         ]
       });
@@ -704,11 +704,14 @@
       return;
     }
     const steps = Array.isArray(wf.steps) ? wf.steps : [];
+    const outputs = Array.isArray(wf.outputs) && wf.outputs.length > 0
+      ? wf.outputs
+      : [{ type: 'topic', topic: wf.outputTopic }, ...(wf.loopbackToInput ? [{ type: 'loopback', topic: wf.outputTopic }] : [])];
     workflowDetail.innerHTML = `
       <h4>${escapeHtml(wf.name || wf.id)}</h4>
       <div class="muted">id: ${escapeHtml(wf.id)}</div>
       <div class="muted">sourceTopics: ${(wf.sourceTopics || []).join(', ') || '-'}</div>
-      <div class="muted">outputTopic: ${wf.outputTopic || '-'}</div>
+      <div class="muted">outputs: ${outputs.length ? outputs.map(o => `${o.type}${o.topic ? `(${o.topic})` : ''}`).join(', ') : '-'}</div>
       <div class="muted">steps: ${steps.length}</div>
       ${steps.map((s, i) => `
         <div class="step">

@@ -15,6 +15,7 @@
       <a href="#input-events">Input Events</a>
       <a href="#outputs">Outputs</a>
       <a href="#workflows">Workflows</a>
+      <a href="#logics">Logics</a>
       <a href="#samples">Samples</a>
       <a href="#enrichment">Enrichment</a>
       <a href="/v1/orchestrator/graph.html" target="_blank">Graph Demo</a>
@@ -22,82 +23,92 @@
     </nav>
   </header>
 
-  <main>
-    <section id="input-defs">
-      <h2>Input Definitions</h2>
-      <form id="inputDefForm">
-        <label>name <input name="name" value="webhook-orders" required></label>
-        <label>type
-          <select name="type">
-            <option value="webhook" selected>webhook</option>
-            <option value="udp">udp</option>
-            <option value="tail">tail</option>
-          </select>
-        </label>
-        <label>enabled <input type="checkbox" name="enabled" checked></label>
-        <label>workflowId <input name="workflowId" value="wf-orders"></label>
-        <label>topic <input name="topic" value="orders/new"></label>
-        <label>source <input name="source" value="input:webhook-orders"></label>
-        <label>eventType <input name="eventType" value="order"></label>
-        <label>config(JSON)
-          <textarea name="config">{
+  <main class="dashboard" style="--row1: 66.6667%; --col1: 25%; --col3: 25%; --bottomCol1: 50%;">
+    <aside class="sidebar" aria-label="Sections">
+      <a class="sidebar-item" href="#input-defs" title="Input"><span aria-hidden="true">📥</span></a>
+      <a class="sidebar-item" href="#workflows" title="Workflow"><span aria-hidden="true">🧩</span></a>
+      <a class="sidebar-item" href="#outputs" title="Output"><span aria-hidden="true">📤</span></a>
+      <a class="sidebar-item" href="#logics" title="Logics"><span aria-hidden="true">🧠</span></a>
+    </aside>
+    <section class="panel panel-input">
+      <div class="panel-header">
+        <h2 class="panel-title"><span class="panel-icon" aria-hidden="true">📥</span>input</h2>
+      </div>
+      <div class="panel-body">
+        <section id="input-defs" class="panel-section">
+          <h3>Input Definitions</h3>
+          <form id="inputDefForm">
+            <label>name <input name="name" value="webhook-orders" required></label>
+            <label>type
+              <select name="type">
+                <option value="webhook" selected>webhook</option>
+                <option value="udp">udp</option>
+                <option value="tail">tail</option>
+              </select>
+            </label>
+            <label>enabled <input type="checkbox" name="enabled" checked></label>
+            <label>workflowId <input name="workflowId" value="wf-orders"></label>
+            <label>topic <input name="topic" value="orders/new"></label>
+            <label>source <input name="source" value="input:webhook-orders"></label>
+            <label>eventType <input name="eventType" value="order"></label>
+            <label>config(JSON)
+              <textarea name="config">{
   "path": "/hooks/orders",
   "method": "POST"
 }</textarea></label>
-        <div class="toolbar">
-          <button type="submit">Create Input</button>
-          <button type="button" id="sampleWebhookBtn">Sample: Webhook</button>
-          <button type="button" id="sampleUdpBtn">Sample: UDP</button>
-          <button type="button" id="sampleTailBtn">Sample: Tail</button>
-        </div>
-      </form>
-      <div class="table-wrap">
-        <table id="inputDefsTable">
-          <thead><tr><th>id</th><th>name</th><th>type</th><th>enabled</th><th>workflowId</th><th>topic</th><th>source</th><th>actions</th></tr></thead>
-          <tbody></tbody>
-        </table>
+            <div class="toolbar">
+              <button type="submit">Create Input</button>
+              <button type="button" id="sampleWebhookBtn">Sample: Webhook</button>
+              <button type="button" id="sampleUdpBtn">Sample: UDP</button>
+              <button type="button" id="sampleTailBtn">Sample: Tail</button>
+            </div>
+          </form>
+          <div class="table-wrap">
+            <table id="inputDefsTable">
+              <thead><tr><th>id</th><th>name</th><th>type</th><th>enabled</th><th>workflowId</th><th>topic</th><th>source</th><th>actions</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="input-events" class="panel-section">
+          <h3>Input Events</h3>
+          <form id="inputForm">
+            <label>source <input name="source" value="demo-ui" required></label>
+            <label>topic <input name="topic" value="demo/topic" required></label>
+            <label>type <input name="type" value="demo"></label>
+            <label>payload(JSON) <textarea name="payload">{"message":"hello"}</textarea></label>
+            <button type="submit">Send</button>
+          </form>
+          <div class="table-wrap">
+            <table id="inputsTable">
+              <thead><tr><th>time</th><th>source</th><th>topic</th><th>type</th><th>payload</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
       </div>
     </section>
 
-    <section id="input-events">
-      <h2>Input Events</h2>
-      <form id="inputForm">
-        <label>source <input name="source" value="demo-ui" required></label>
-        <label>topic <input name="topic" value="demo/topic" required></label>
-        <label>type <input name="type" value="demo"></label>
-        <label>payload(JSON) <textarea name="payload">{"message":"hello"}</textarea></label>
-        <button type="submit">Send</button>
-      </form>
-      <div class="table-wrap">
-        <table id="inputsTable">
-          <thead><tr><th>time</th><th>source</th><th>topic</th><th>type</th><th>payload</th></tr></thead>
-          <tbody></tbody>
-        </table>
+    <section class="panel panel-workflow" id="workflows">
+      <div class="panel-header">
+        <h2 class="panel-title"><span class="panel-icon" aria-hidden="true">🧩</span>workflow</h2>
       </div>
-    </section>
-
-    <section id="outputs">
-      <h2>Outputs</h2>
-      <div class="table-wrap">
-        <table id="outputsTable">
-          <thead><tr><th>time</th><th>source</th><th>topic</th><th>type</th><th>payload</th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-    </section>
-
-    <section id="workflows">
-      <h2>Workflows</h2>
-      <form id="wfForm">
-        <label>name <input name="name" value="wf-demo" required></label>
-        <label>enabled <input type="checkbox" name="enabled" checked></label>
-        <label>sourceTopics (comma) <input name="sourceTopics" value="demo/topic"></label>
-        <label>outputTopic <input name="outputTopic" value="demo/output"></label>
-        <label>loopback <input type="checkbox" name="loopbackToInput"></label>
-        <label>steps(JSON)
-          <textarea name="steps">[
+      <div class="panel-body">
+        <form id="wfForm">
+          <label>name <input name="name" value="wf-demo" required></label>
+          <label>enabled <input type="checkbox" name="enabled" checked></label>
+          <label>sourceTopics (comma) <input name="sourceTopics" value="demo/topic"></label>
+          <label>outputTopic <input name="outputTopic" value="demo/output"></label>
+          <label>outputs(JSON)
+            <textarea name="outputs">[
+        {"type":"topic","topic":"demo/output"},
+        {"type":"loopback","topic":"demo/loopback"}
+      ]</textarea></label>
+          <label>steps(JSON)
+            <textarea name="steps">[
   {"type":"debounce","ms":200},
-  {"type":"enrich","sourceId":"prefectures","params":{"code":"payload.prefCode"},"targetField":"payload.enriched.pref"},
+  {"type":"logic","logicId":"prefectures","params":{"code":"payload.prefCode"},"targetField":"payload.enriched.pref"},
   {"type":"tapLog","label":"debug"},
   {"type":"branch","branches":[
      {"when":{"field":"payload.message","equals":"hello"},
@@ -105,114 +116,179 @@
       "outputTopic":"demo/branch"}
   ]}
 ]</textarea></label>
-        <button type="submit">Create Workflow</button>
-      </form>
+          <button type="submit">Create Workflow</button>
+        </form>
 
-      <div class="table-wrap">
-        <table id="wfTable">
-          <thead><tr><th>id</th><th>name</th><th>enabled</th><th>sourceTopics</th><th>outputTopic</th><th>actions</th></tr></thead>
-          <tbody></tbody>
-        </table>
+        <div class="table-wrap">
+          <table id="wfTable">
+            <thead><tr><th>id</th><th>name</th><th>enabled</th><th>sourceTopics</th><th>outputTopic</th><th>actions</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <div class="card detail" id="wfDetail">
+          <div class="muted">ワークフローをクリックすると詳細が表示されます。</div>
+        </div>
+
+        <details>
+          <summary>ロジックの説明</summary>
+          <ul>
+            <li><b>filterEquals</b>: 指定フィールドが値と一致するイベントのみ通過</li>
+            <li><b>mapFields</b>: `{ 目標パス: 取得元パス }` で payload を再構成</li>
+            <li><b>debounce</b>: 直近の値のみを遅延出力 (ms)</li>
+            <li><b>throttle</b>: 高頻度入力を一定間隔で間引き (ms)</li>
+            <li><b>delay</b>: 出力を遅延 (ms)</li>
+            <li><b>aggregateCount</b>: 一定時間窓で件数を集計 (windowMs, keyField)</li>
+            <li><b>logic</b>: 統合ロジック。built-in/embedded/webhook を実行し、結果を payload に補完</li>
+            <li><b>enrich</b>: 外部データ取得 + キャッシュを行い、結果を payload に補完</li>
+            <li><b>setTopic</b>: イベントの topic を差し替え</li>
+            <li><b>mergeWithTopics</b>: 他トピックのイベントを合流</li>
+            <li><b>raceTopics</b>: 複数トピックのうち最初に来たストリームに追従</li>
+            <li><b>branch</b>: 条件にマッチした場合、<i>サイド出力</i>として即時に output を発行 (元イベントは流れ続けます)</li>
+            <li><b>tapLog</b>: コンソールにデバッグ出力</li>
+          </ul>
+        </details>
+
+        <details id="samples">
+          <summary>Samples</summary>
+          <div class="grid">
+            <div class="card">
+              <span class="badge">Input Definition</span>
+              <h4>Webhook: Orders</h4>
+              <p>HTTP で注文イベントを取り込み、指定 workflow にバインド。</p>
+              <div class="stack">
+                <button type="button" id="createWebhookSample">Create Input</button>
+                <span class="mono">POST /v1/orchestrator/hooks/orders</span>
+              </div>
+            </div>
+            <div class="card">
+              <span class="badge">Input Definition</span>
+              <h4>UDP: Sensors</h4>
+              <p>UDP で JSON を受け、1秒集計ワークフローへ流します。</p>
+              <div class="stack">
+                <button type="button" id="createUdpSample">Create Input</button>
+                <span class="mono">udp://:40123</span>
+              </div>
+            </div>
+            <div class="card">
+              <span class="badge">Workflow</span>
+              <h4>Aggregate Count</h4>
+              <p>1秒窓で `payload.deviceId` ごとの件数を集計。</p>
+              <div class="stack">
+                <button type="button" id="createAggregateWf">Create Workflow</button>
+                <button type="button" id="sendBurst">Send Burst Events</button>
+              </div>
+            </div>
+            <div class="card">
+              <span class="badge">Workflow</span>
+              <h4>Enrich Orders</h4>
+              <p>prefectures とユーザー情報を補完して出力。</p>
+              <div class="stack">
+                <button type="button" id="createEnrichWf">Create Workflow</button>
+                <button type="button" id="sendOrderEvent">Send Sample Event</button>
+              </div>
+            </div>
+          </div>
+          <details>
+            <summary>サンプル JSON</summary>
+            <div class="split">
+              <pre><code id="sampleInputWebhook" class="mono"></code></pre>
+              <pre><code id="sampleWfAggregate" class="mono"></code></pre>
+            </div>
+          </details>
+        </details>
       </div>
-
-      <details>
-        <summary>ロジックの説明</summary>
-        <ul>
-          <li><b>filterEquals</b>: 指定フィールドが値と一致するイベントのみ通過</li>
-          <li><b>mapFields</b>: `{ 目標パス: 取得元パス }` で payload を再構成</li>
-          <li><b>debounce</b>: 直近の値のみを遅延出力 (ms)</li>
-          <li><b>throttle</b>: 高頻度入力を一定間隔で間引き (ms)</li>
-          <li><b>delay</b>: 出力を遅延 (ms)</li>
-          <li><b>aggregateCount</b>: 一定時間窓で件数を集計 (windowMs, keyField)</li>
-          <li><b>enrich</b>: 外部データ取得 + キャッシュを行い、結果を payload に補完</li>
-          <li><b>setTopic</b>: イベントの topic を差し替え</li>
-          <li><b>mergeWithTopics</b>: 他トピックのイベントを合流</li>
-          <li><b>raceTopics</b>: 複数トピックのうち最初に来たストリームに追従</li>
-          <li><b>branch</b>: 条件にマッチした場合、<i>サイド出力</i>として即時に output を発行 (元イベントは流れ続けます)</li>
-          <li><b>tapLog</b>: コンソールにデバッグ出力</li>
-        </ul>
-      </details>
     </section>
 
-    <section id="samples">
-      <h2>Samples</h2>
-      <div class="grid">
-        <div class="card">
-          <span class="badge">Input Definition</span>
-          <h4>Webhook: Orders</h4>
-          <p>HTTP で注文イベントを取り込み、指定 workflow にバインド。</p>
-          <div class="stack">
-            <button type="button" id="createWebhookSample">Create Input</button>
-            <span class="mono">POST /v1/orchestrator/hooks/orders</span>
-          </div>
-        </div>
-        <div class="card">
-          <span class="badge">Input Definition</span>
-          <h4>UDP: Sensors</h4>
-          <p>UDP で JSON を受け、1秒集計ワークフローへ流します。</p>
-          <div class="stack">
-            <button type="button" id="createUdpSample">Create Input</button>
-            <span class="mono">udp://:40123</span>
-          </div>
-        </div>
-        <div class="card">
-          <span class="badge">Workflow</span>
-          <h4>Aggregate Count</h4>
-          <p>1秒窓で `payload.deviceId` ごとの件数を集計。</p>
-          <div class="stack">
-            <button type="button" id="createAggregateWf">Create Workflow</button>
-            <button type="button" id="sendBurst">Send Burst Events</button>
-          </div>
-        </div>
-        <div class="card">
-          <span class="badge">Workflow</span>
-          <h4>Enrich Orders</h4>
-          <p>prefectures とユーザー情報を補完して出力。</p>
-          <div class="stack">
-            <button type="button" id="createEnrichWf">Create Workflow</button>
-            <button type="button" id="sendOrderEvent">Send Sample Event</button>
-          </div>
+    <section class="panel panel-output" id="outputs">
+      <div class="panel-header">
+        <h2 class="panel-title"><span class="panel-icon" aria-hidden="true">📤</span>output</h2>
+      </div>
+      <div class="panel-body">
+        <div class="table-wrap">
+          <table id="outputsTable">
+            <thead><tr><th>time</th><th>source</th><th>topic</th><th>type</th><th>payload</th></tr></thead>
+            <tbody></tbody>
+          </table>
         </div>
       </div>
-      <details>
-        <summary>サンプル JSON</summary>
-        <div class="split">
-          <pre><code id="sampleInputWebhook" class="mono"></code></pre>
-          <pre><code id="sampleWfAggregate" class="mono"></code></pre>
-        </div>
-      </details>
     </section>
 
-    <section id="enrichment">
-      <h2>Enrichment (補完) の使い方</h2>
-      <p>
-        <b>enrich</b> ステップは、イベント内の値をパラメータにして外部 GET を行い、
-        結果を payload に書き込みます。キャッシュがあるため毎回のリクエストは避けられます。
-      </p>
+    <div class="panel-row panel-row-bottom">
+      <section class="panel panel-logics" id="logics">
+        <div class="panel-header">
+          <h2 class="panel-title"><span class="panel-icon" aria-hidden="true">🧠</span>logics</h2>
+        </div>
+        <div class="panel-body">
+          <p class="muted">built-in / embedded は読み取り専用、追加できるのは webhook タイプのみです。</p>
 
-      <div class="toolbar">
-        <button id="enrichReload">補完ソースを再読み込み</button>
-        <button id="enrichClearCache">キャッシュ全消去</button>
-        <span class="muted">cache size: <b id="enrichCacheSize">-</b></span>
-      </div>
+          <form id="logicForm">
+            <label>name <input name="name" value="logic-webhook-demo" required></label>
+            <label>type
+              <select name="type">
+                <option value="webhook" selected>webhook</option>
+              </select>
+            </label>
+            <label>enabled <input type="checkbox" name="enabled" checked></label>
+            <label>config(JSON)
+              <textarea name="config">{
+  "url": "https://example.com/webhook",
+  "method": "POST",
+  "headers": { "Authorization": "Bearer YOUR_TOKEN" },
+  "timeoutMs": 4000,
+  "ttlMs": 60000
+}</textarea></label>
+            <div class="toolbar">
+              <button type="submit">Create Logic</button>
+              <button type="button" id="sampleLogicBtn">Sample: Webhook Logic</button>
+            </div>
+          </form>
 
-      <div class="table-wrap">
-        <table id="enrichTable">
-          <thead>
-            <tr>
-              <th>id</th>
-              <th>ttlMs</th>
-              <th>refreshIntervalMs</th>
-              <th>refreshable</th>
-              <th>actions</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
+          <div class="table-wrap">
+            <table id="logicTable">
+              <thead><tr><th>id</th><th>name</th><th>type</th><th>enabled</th><th>config</th><th>actions</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
 
-      <h3>1) 入力イベント例</h3>
-      <pre><code>{
+      <section class="panel panel-builtins" id="enrichment">
+        <div class="panel-header">
+          <h2 class="panel-title">(built-in)</h2>
+        </div>
+        <div class="panel-body">
+          <p>
+            <b>logic</b> ステップは、イベント内の値をパラメータにして内蔵ロジック / webhook を実行し、
+            結果を payload に書き込みます。キャッシュがあるため毎回のリクエストは避けられます。
+            既存の <b>enrich</b> ステップも互換として利用できます。
+          </p>
+
+          <div class="toolbar">
+            <button id="enrichReload">補完ソースを再読み込み</button>
+            <button id="enrichClearCache">キャッシュ全消去</button>
+            <span class="muted">cache size: <b id="enrichCacheSize">-</b></span>
+          </div>
+
+          <div class="table-wrap">
+            <table id="enrichTable">
+              <thead>
+                <tr>
+                  <th>id</th>
+                  <th>ttlMs</th>
+                  <th>refreshIntervalMs</th>
+                  <th>refreshable</th>
+                  <th>actions</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+
+          <details>
+            <summary>利用方法 / サンプル</summary>
+            <h3>1) 入力イベント例</h3>
+            <pre><code>{
   "source": "demo-ui",
   "topic": "demo/topic",
   "type": "demo",
@@ -223,25 +299,25 @@
   }
 }</code></pre>
 
-      <h3>2) ワークフローの例 (steps のみ)</h3>
-      <pre><code>[
+            <h3>2) ワークフローの例 (steps のみ)</h3>
+            <pre><code>[
   {
-    "type": "enrich",
-    "sourceId": "prefectures",
+    "type": "logic",
+    "logicId": "prefectures",
     "params": { "code": "payload.prefCode" },
     "targetField": "payload.enriched.pref"
   },
   {
-    "type": "enrich",
-    "sourceId": "jsonplaceholder-user",
+    "type": "logic",
+    "logicId": "jsonplaceholder-user",
     "params": { "id": "payload.userId" },
     "targetField": "payload.enriched.user",
     "cacheTtlMs": 300000
   }
 ]</code></pre>
 
-      <h3>3) 補完結果 (出力 payload の例)</h3>
-      <pre><code>{
+            <h3>3) 補完結果 (出力 payload の例)</h3>
+            <pre><code>{
   "message": "hello",
   "prefCode": 13,
   "userId": 1,
@@ -251,15 +327,23 @@
   }
 }</code></pre>
 
-      <details>
-        <summary>利用可能な補完ソース (デフォルト)</summary>
-        <ul>
-          <li><b>prefectures</b>: 静的リスト (北海道 / 東京都 / 大阪府 をサンプル内蔵)</li>
-          <li><b>jsonplaceholder-user</b>: https://jsonplaceholder.typicode.com/users/{id} (GET)</li>
-        </ul>
-        <p>追加の補完ソースは <code>src/enrichment.ts</code> にハードコードで定義可能です。</p>
-      </details>
-    </section>
+            <details>
+              <summary>利用可能な補完ソース (デフォルト)</summary>
+              <ul>
+                <li><b>prefectures</b>: 静的リスト (北海道 / 東京都 / 大阪府 をサンプル内蔵)</li>
+                <li><b>jsonplaceholder-user</b>: https://jsonplaceholder.typicode.com/users/{id} (GET)</li>
+              </ul>
+              <p>追加の補完ソースは <code>src/enrichment.ts</code> にハードコードで定義可能です。</p>
+            </details>
+          </details>
+        </div>
+      </section>
+      <div class="resizer resizer-col resizer-bottom" aria-hidden="true"></div>
+    </div>
+
+    <div class="resizer resizer-col resizer-col-1" aria-hidden="true"></div>
+    <div class="resizer resizer-col resizer-col-2" aria-hidden="true"></div>
+    <div class="resizer resizer-row" aria-hidden="true"></div>
   </main>
 
   <footer>

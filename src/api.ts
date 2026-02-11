@@ -6,9 +6,9 @@ import path from 'path';
 import { RingBuffer } from './ringbuffer';
 import { SSEHub } from './sse';
 import { EventBus } from './eventBus';
-import { InputDefinition, InputType, OrchestratorEvent, WorkflowDefinition } from './types';
+import { InputDefinition, InputType, LogicDefinition, LogicType, OrchestratorEvent, WebhookLogicConfig, WorkflowDefinition } from './types';
 import { WorkflowEngine } from './workflowEngine';
-import { createDefaultEnrichmentService } from './enrichment';
+import { WebhookProvider, createDefaultEnrichmentService } from './enrichment';
 import { InputManager, normalizeWebhookPath } from './inputManager';
 
 export function createApi(staticDir: string) {
@@ -27,6 +27,17 @@ export function createApi(staticDir: string) {
   });
 
   const enrichment = createDefaultEnrichmentService();
+
+  const logicStore = new Map<string, LogicDefinition>();
+  for (const p of enrichment.listProviders()) {
+    logicStore.set(p.id, {
+      id: p.id,
+      name: p.id,
+      type: 'builtin',
+      enabled: true,
+      description: 'built-in provider'
+    });
+  }
 
   const engine = new WorkflowEngine(
     bus,
@@ -191,6 +202,44 @@ export function createApi(staticDir: string) {
       if (cfg?.method) cfg.method = String(cfg.method).toUpperCase();
     }
     return def;
+  }
+
+  function buildLogicDefinition(body: any, idOverride?: string): LogicDefinition {
+    const type = (body?.type as LogicType | undefined) ?? 'webhook';
+    if (!['builtin', 'embedded', 'webhook'].includes(type)) {
+      throw new Error('invalid_logic_type');
+    }
+    const id = idOverride || body?.id || randomUUID();
+    const def: LogicDefinition = {
+      id,
+      name: body?.name || `logic-${id.slice(0, 8)}`,
+      type,
+      enabled: body?.enabled ?? true,
+      description: body?.description,
+      config: body?.config || {}
+    };
+    if (def.type === 'webhook') {
+      const cfg = def.config as WebhookLogicConfig;
+      if (!cfg?.url) throw new Error('webhook_url_required');
+      if (cfg.method) cfg.method = String(cfg.method).toUpperCase() as WebhookLogicConfig['method'];
+    }
+    return def;
+  }
+
+  function applyLogicDefinition(def: LogicDefinition) {
+    if (def.type !== 'webhook') return;
+    enrichment.unregister(def.id);
+    if (!def.enabled) return;
+    const cfg = def.config as WebhookLogicConfig;
+    const provider = new WebhookProvider({
+      id: def.id,
+      url: cfg.url,
+      method: cfg.method,
+      headers: cfg.headers,
+      timeoutMs: cfg.timeoutMs,
+      ttlMs: cfg.ttlMs
+    });
+    enrichment.register(provider);
   }
 
   async function serveStatic(res: ServerResponse, relPath: string, method: string | undefined): Promise<boolean> {
@@ -441,6 +490,7 @@ export function createApi(staticDir: string) {
             steps: body.steps || [],
             outputTopic: body.outputTopic,
             loopbackToInput: body.loopbackToInput ?? false,
+            outputs: Array.isArray(body.outputs) ? body.outputs : undefined,
           };
           wfStore.set(id, wf);
           engine.upsert(wf);
@@ -469,6 +519,7 @@ export function createApi(staticDir: string) {
             steps: body.steps || [],
             outputTopic: body.outputTopic,
             loopbackToInput: body.loopbackToInput ?? false,
+            outputs: Array.isArray(body.outputs) ? body.outputs : undefined,
           };
           wfStore.set(id, wf);
           engine.upsert(wf);
@@ -518,6 +569,83 @@ export function createApi(staticDir: string) {
         wfStore.set(id, wf);
         engine.enable(id, false);
         return sendJson(res, 200, { id, enabled: false });
+      }
+    }
+
+    // Logics (unified enrichment + built-in)
+    if (segments[0] === 'logics') {
+      if (segments.length === 1 && method === 'GET') {
+        return sendJson(res, 200, { data: Array.from(logicStore.values()) });
+      }
+      if (segments.length === 1 && method === 'POST') {
+        try {
+          const body = await readJsonBody(req);
+          const def = buildLogicDefinition(body);
+          if (def.type !== 'webhook') return sendJson(res, 400, { error: 'only_webhook_type_is_creatable' });
+          if (logicStore.has(def.id)) return sendJson(res, 409, { error: 'id_already_exists' });
+          logicStore.set(def.id, def);
+          applyLogicDefinition(def);
+          return sendJson(res, 201, def);
+        } catch (err: any) {
+          if (err?.message === 'payload_too_large') return sendJson(res, 413, { error: 'payload too large' });
+          if (err?.message === 'invalid_logic_type') return sendJson(res, 400, { error: 'invalid_logic_type' });
+          if (err?.message === 'webhook_url_required') return sendJson(res, 400, { error: 'webhook_url_required' });
+          return sendJson(res, 400, { error: 'invalid json' });
+        }
+      }
+      if (segments.length === 2 && method === 'GET') {
+        const def = logicStore.get(segments[1]);
+        if (!def) return sendJson(res, 404, { error: 'not found' });
+        return sendJson(res, 200, def);
+      }
+      if (segments.length === 2 && method === 'PUT') {
+        const id = segments[1];
+        const old = logicStore.get(id);
+        if (!old) return sendJson(res, 404, { error: 'not found' });
+        if (old.type !== 'webhook') return sendJson(res, 400, { error: 'builtin_logic_is_readonly' });
+        try {
+          const body = await readJsonBody(req);
+          const def = buildLogicDefinition(body, id);
+          if (def.type !== 'webhook') return sendJson(res, 400, { error: 'only_webhook_type_is_updatable' });
+          logicStore.set(id, def);
+          applyLogicDefinition(def);
+          return sendJson(res, 200, def);
+        } catch (err: any) {
+          if (err?.message === 'payload_too_large') return sendJson(res, 413, { error: 'payload too large' });
+          if (err?.message === 'invalid_logic_type') return sendJson(res, 400, { error: 'invalid_logic_type' });
+          if (err?.message === 'webhook_url_required') return sendJson(res, 400, { error: 'webhook_url_required' });
+          return sendJson(res, 400, { error: 'invalid json' });
+        }
+      }
+      if (segments.length === 2 && method === 'PATCH') {
+        const id = segments[1];
+        const old = logicStore.get(id);
+        if (!old) return sendJson(res, 404, { error: 'not found' });
+        if (old.type !== 'webhook') return sendJson(res, 400, { error: 'builtin_logic_is_readonly' });
+        try {
+          const body = await readJsonBody(req);
+          const merged = { ...old, ...body, config: { ...(old.config || {}), ...(body?.config || {}) } };
+          const def = buildLogicDefinition(merged, id);
+          if (def.type !== 'webhook') return sendJson(res, 400, { error: 'only_webhook_type_is_updatable' });
+          logicStore.set(id, def);
+          applyLogicDefinition(def);
+          return sendJson(res, 200, def);
+        } catch (err: any) {
+          if (err?.message === 'payload_too_large') return sendJson(res, 413, { error: 'payload too large' });
+          if (err?.message === 'invalid_logic_type') return sendJson(res, 400, { error: 'invalid_logic_type' });
+          if (err?.message === 'webhook_url_required') return sendJson(res, 400, { error: 'webhook_url_required' });
+          return sendJson(res, 400, { error: 'invalid json' });
+        }
+      }
+      if (segments.length === 2 && method === 'DELETE') {
+        const id = segments[1];
+        const old = logicStore.get(id);
+        if (!old) return sendJson(res, 404, { error: 'not found' });
+        if (old.type !== 'webhook') return sendJson(res, 400, { error: 'builtin_logic_is_readonly' });
+        logicStore.delete(id);
+        enrichment.unregister(id);
+        res.statusCode = 204;
+        return res.end();
       }
     }
 

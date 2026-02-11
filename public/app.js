@@ -13,8 +13,10 @@
   const inputDefsTbody = qs('#inputDefsTable tbody');
   const outputsTbody = qs('#outputsTable tbody');
   const wfTbody = qs('#wfTable tbody');
+  const wfDetail = qs('#wfDetail');
   const enrichTbody = qs('#enrichTable tbody');
   const enrichCacheSize = qs('#enrichCacheSize');
+  const logicTbody = qs('#logicTable tbody');
 
   async function refreshTables(){
     const [inputDefs, ins, outs, wfs] = await Promise.all([
@@ -27,6 +29,7 @@
     renderEvents(inputsTbody, ins.data);
     renderEvents(outputsTbody, outs.data);
     renderWfs(wfs.data);
+    refreshLogics();
   }
 
   async function refreshEnrichments(){
@@ -35,6 +38,17 @@
       const data = await res.json();
       renderEnrichments(data.data || []);
       if (enrichCacheSize) enrichCacheSize.textContent = String(data.cache?.size ?? '-');
+    } catch (err) {
+      // ignore
+    }
+  }
+
+  async function refreshLogics(){
+    if (!logicTbody) return;
+    try {
+      const res = await fetch(apiBase + '/logics');
+      const data = await res.json();
+      renderLogics(data.data || []);
     } catch (err) {
       // ignore
     }
@@ -94,6 +108,11 @@
       tr.append(td(String(wf.enabled)));
       tr.append(td((wf.sourceTopics||[]).join(',')));
       tr.append(td(wf.outputTopic||''));
+      tr.style.cursor = 'pointer';
+      tr.onclick = (ev)=>{
+        if (ev.target && ev.target.tagName === 'BUTTON') return;
+        renderWorkflowDetail(wf);
+      };
       const actions = document.createElement('td');
       const btnE = document.createElement('button');
       btnE.textContent = wf.enabled ? 'Disable' : 'Enable';
@@ -112,6 +131,36 @@
       tr.append(actions);
       wfTbody.prepend(tr);
     });
+  }
+
+  function renderWorkflowDetail(wf){
+    if (!wfDetail) return;
+    if (!wf) {
+      wfDetail.innerHTML = '<div class="muted">ワークフローをクリックすると詳細が表示されます。</div>';
+      return;
+    }
+    const steps = Array.isArray(wf.steps) ? wf.steps : [];
+    const outputs = Array.isArray(wf.outputs) && wf.outputs.length > 0
+      ? wf.outputs
+      : [{ type: 'topic', topic: wf.outputTopic }, ...(wf.loopbackToInput ? [{ type: 'loopback', topic: wf.outputTopic }] : [])];
+    wfDetail.innerHTML = `
+      <h4>${escapeHtml(wf.name || wf.id)}</h4>
+      <div class="muted">id: ${escapeHtml(wf.id)}</div>
+      <div class="muted">enabled: ${escapeHtml(String(!!wf.enabled))}</div>
+      <div class="muted">sourceTopics: ${escapeHtml((wf.sourceTopics || []).join(', ') || '-')}</div>
+      <div class="muted">outputs: ${escapeHtml(outputs.length ? outputs.map(o => `${o.type}${o.topic ? `(${o.topic})` : ''}`).join(', ') : '-')}</div>
+      <div class="muted">steps: ${escapeHtml(String(steps.length))}</div>
+      ${steps.map((s, i) => `
+        <div class="step">
+          <div><b>#${i + 1}</b> ${escapeHtml(s.type || 'step')}</div>
+          <div><code>${escapeHtml(JSON.stringify(s))}</code></div>
+        </div>
+      `).join('')}
+    `;
+  }
+
+  function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
   }
 
   function renderEnrichments(rows){
@@ -142,6 +191,49 @@
       actions.append(btnR, btnC);
       tr.append(actions);
       enrichTbody.prepend(tr);
+    });
+  }
+
+  function renderLogics(rows){
+    if (!logicTbody) return;
+    logicTbody.innerHTML='';
+    rows.forEach(def => {
+      const tr = document.createElement('tr');
+      tr.append(td(def.id));
+      tr.append(td(def.name));
+      tr.append(td(def.type));
+      tr.append(td(String(!!def.enabled)));
+      tr.append(td(JSON.stringify(def.config || {})));
+      const actions = document.createElement('td');
+
+      if (def.type === 'webhook') {
+        const btnE = document.createElement('button');
+        btnE.textContent = def.enabled ? 'Disable' : 'Enable';
+        btnE.onclick = async ()=>{
+          await fetch(apiBase + `/logics/${def.id}`, {
+            method:'PATCH',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ enabled: !def.enabled })
+          });
+          refreshLogics();
+        };
+        const btnD = document.createElement('button');
+        btnD.textContent = 'Delete';
+        btnD.style.marginLeft = '6px';
+        btnD.onclick = async ()=>{
+          await fetch(apiBase + `/logics/${def.id}`, {method:'DELETE'});
+          refreshLogics();
+        };
+        actions.append(btnE, btnD);
+      } else {
+        const span = document.createElement('span');
+        span.className = 'muted';
+        span.textContent = 'read-only';
+        actions.append(span);
+      }
+
+      tr.append(actions);
+      logicTbody.prepend(tr);
     });
   }
 
@@ -183,21 +275,51 @@
     const fd = new FormData(e.target);
     try {
       const steps = JSON.parse(fd.get('steps'));
+      const outputsRaw = String(fd.get('outputs') || '').trim();
+      const outputs = outputsRaw ? JSON.parse(outputsRaw) : undefined;
       const body = {
         name: fd.get('name'),
         enabled: !!fd.get('enabled'),
         sourceTopics: String(fd.get('sourceTopics')||'').split(',').filter(Boolean),
         outputTopic: fd.get('outputTopic')||undefined,
-        loopbackToInput: !!fd.get('loopbackToInput'),
+        outputs,
         steps
       };
       await fetch(apiBase + '/workflows', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
       e.target.reset();
       refreshTables();
-    } catch (err){ alert('steps は JSON 配列で入力してください'); }
+    } catch (err){ alert('steps / outputs は JSON 配列で入力してください'); }
+  });
+
+  const logicForm = qs('#logicForm');
+  if (logicForm) logicForm.addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    try {
+      const body = {
+        name: fd.get('name'),
+        type: fd.get('type'),
+        enabled: !!fd.get('enabled'),
+        config: JSON.parse(fd.get('config'))
+      };
+      await fetch(apiBase + '/logics', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+      refreshLogics();
+    } catch (err){ alert('config は JSON として解釈できません'); }
   });
 
   const samples = {
+    logicWebhook: {
+      name: 'logic-webhook-demo',
+      type: 'webhook',
+      enabled: true,
+      config: {
+        url: 'https://example.com/webhook',
+        method: 'POST',
+        headers: { Authorization: 'Bearer YOUR_TOKEN' },
+        timeoutMs: 4000,
+        ttlMs: 60000
+      }
+    },
     webhookInput: {
       name: 'webhook-orders',
       type: 'webhook',
@@ -242,7 +364,7 @@
       sourceTopics: ['orders/new'],
       outputTopic: 'orders/processed',
       steps: [
-        { type: 'enrich', sourceId: 'prefectures', params: { code: 'payload.prefCode' }, targetField: 'payload.enriched.pref' },
+        { type: 'logic', logicId: 'prefectures', params: { code: 'payload.prefCode' }, targetField: 'payload.enriched.pref' },
         { type: 'tapLog', label: 'orders' }
       ]
     },
@@ -263,6 +385,15 @@
     form.querySelector('[name="topic"]').value = sample.topic || '';
     form.querySelector('[name="source"]').value = sample.source || '';
     form.querySelector('[name="eventType"]').value = sample.eventType || '';
+    form.querySelector('[name="config"]').value = JSON.stringify(sample.config || {}, null, 2);
+  }
+
+  function fillLogicDef(sample) {
+    const form = qs('#logicForm');
+    if (!form) return;
+    form.querySelector('[name="name"]').value = sample.name || '';
+    form.querySelector('[name="type"]').value = sample.type || 'webhook';
+    form.querySelector('[name="enabled"]').checked = !!sample.enabled;
     form.querySelector('[name="config"]').value = JSON.stringify(sample.config || {}, null, 2);
   }
 
@@ -299,6 +430,8 @@
   if (sampleUdpBtn) sampleUdpBtn.onclick = ()=>fillInputDef(samples.udpInput);
   const sampleTailBtn = qs('#sampleTailBtn');
   if (sampleTailBtn) sampleTailBtn.onclick = ()=>fillInputDef(samples.tailInput);
+  const sampleLogicBtn = qs('#sampleLogicBtn');
+  if (sampleLogicBtn) sampleLogicBtn.onclick = ()=>fillLogicDef(samples.logicWebhook);
 
   const createWebhookSample = qs('#createWebhookSample');
   if (createWebhookSample) createWebhookSample.onclick = ()=>createSampleInput(samples.webhookInput);
@@ -343,6 +476,99 @@
     refreshEnrichments();
   };
 
+  function initDashboardResizers(){
+    const dashboard = qs('.dashboard');
+    if (!dashboard) return;
+
+    const col1Resizer = qs('.resizer-col-1');
+    const col2Resizer = qs('.resizer-col-2');
+    const rowResizer = qs('.resizer-row');
+    const bottomResizer = qs('.resizer-bottom');
+    if (!col1Resizer || !col2Resizer || !rowResizer || !bottomResizer) return;
+
+    const minCol = 200;
+    const minCenter = 320;
+    const minRow = 220;
+    const minBottom = 180;
+
+    const toPx = (value, total, fallbackPct) => {
+      if (!value) return total * fallbackPct;
+      const v = String(value).trim();
+      if (v.endsWith('%')) return total * (parseFloat(v) / 100);
+      if (v.endsWith('px')) return parseFloat(v);
+      const n = parseFloat(v);
+      return Number.isFinite(n) ? n : total * fallbackPct;
+    };
+
+    const setVar = (name, px) => dashboard.style.setProperty(name, `${px}px`);
+
+    const startDrag = (mode, ev) => {
+      ev.preventDefault();
+      const rect = dashboard.getBoundingClientRect();
+      const sidebarWidth = qs('.sidebar')?.getBoundingClientRect().width || 0;
+      const col1 = toPx(getComputedStyle(dashboard).getPropertyValue('--col1'), rect.width, 0.22);
+      const col3 = toPx(getComputedStyle(dashboard).getPropertyValue('--col3'), rect.width, 0.25);
+      const row1 = toPx(getComputedStyle(dashboard).getPropertyValue('--row1'), rect.height, 0.666667);
+
+      const onMove = (moveEv) => {
+        if (mode === 'col1') {
+          const next = moveEv.clientX - rect.left - sidebarWidth;
+          const max = rect.width - sidebarWidth - minCenter - col3;
+          setVar('--col1', Math.max(minCol, Math.min(next, max)));
+        } else if (mode === 'col3') {
+          const next = rect.right - moveEv.clientX;
+          const max = rect.width - sidebarWidth - minCenter - col1;
+          setVar('--col3', Math.max(minCol, Math.min(next, max)));
+        } else if (mode === 'row1') {
+          const next = moveEv.clientY - rect.top;
+          const max = rect.height - minBottom;
+          setVar('--row1', Math.max(minRow, Math.min(next, max)));
+        }
+      };
+
+      const onUp = () => {
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+      };
+
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+    };
+
+    if (!dashboard.style.getPropertyValue('--row1')) {
+      dashboard.style.setProperty('--row1', '66.6667%');
+    }
+    if (!dashboard.style.getPropertyValue('--col3')) {
+      dashboard.style.setProperty('--col3', '25%');
+    }
+
+    col1Resizer.addEventListener('pointerdown', (ev)=>startDrag('col1', ev));
+    col2Resizer.addEventListener('pointerdown', (ev)=>startDrag('col3', ev));
+    rowResizer.addEventListener('pointerdown', (ev)=>startDrag('row1', ev));
+
+    const startBottomDrag = (ev) => {
+      ev.preventDefault();
+      const rowRect = bottomResizer.parentElement.getBoundingClientRect();
+      const minBottomCol = 240;
+      const onMove = (moveEv) => {
+        const next = moveEv.clientX - rowRect.left;
+        const max = rowRect.width - minBottomCol;
+        const clamped = Math.max(minBottomCol, Math.min(next, max));
+        bottomResizer.parentElement.style.setProperty('--bottomCol1', `${clamped}px`);
+      };
+      const onUp = () => {
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+      };
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+    };
+
+    bottomResizer.addEventListener('pointerdown', startBottomDrag);
+  }
+
   refreshTables();
   refreshEnrichments();
+  refreshLogics();
+  initDashboardResizers();
 })();

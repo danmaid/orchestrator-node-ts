@@ -2,7 +2,7 @@
 import { Observable, debounceTime, throttleTime, delay as rxDelay, filter, map, merge as rxMerge, race as rxRace, timer, takeUntil, tap, mergeMap, bufferTime, groupBy } from 'rxjs';
 import { EventBus } from './eventBus';
 import { EnrichmentService } from './enrichment';
-import { OrchestratorEvent, StepDefinition, WorkflowDefinition } from './types';
+import { OrchestratorEvent, StepDefinition, WorkflowDefinition, WorkflowOutputDefinition } from './types';
 
 export class WorkflowEngine {
   private bus: EventBus;
@@ -84,16 +84,30 @@ export class WorkflowEngine {
     }
 
     const sub = stream$.subscribe((ev) => {
-      const out: OrchestratorEvent = {
+      const baseOut: OrchestratorEvent = {
         ...ev,
         type: ev.type || 'workflow_output',
         topic: ev.topic || def.outputTopic || 'outputs/default',
         meta: { ...(ev.meta || {}), workflowId: def.id }
       };
-      this.onOutput(out);
-      if (def.loopbackToInput) {
-        this.onLoopback({ ...out, type: out.type || 'loopback' });
+
+      const outputs = this.resolveOutputs(def);
+      if (outputs.length === 0) {
+        this.onOutput(baseOut);
+        return;
       }
+
+      outputs.forEach((outDef) => {
+        const next: OrchestratorEvent = {
+          ...baseOut,
+          topic: outDef.topic || baseOut.topic
+        };
+        if (outDef.type === 'loopback') {
+          this.onLoopback({ ...next, type: next.type || 'loopback' });
+        } else {
+          this.onOutput(next);
+        }
+      });
     });
 
     return () => sub.unsubscribe();
@@ -187,35 +201,18 @@ export class WorkflowEngine {
         );
       }
       case 'enrich': {
-        const targetField = step.targetField || `payload.enrichment.${step.sourceId}`;
-        const errorField = step.errorField || `payload.enrichmentErrors.${step.sourceId}`;
-        const onError = step.onError || 'setError';
-        const concurrency = step.concurrency ?? 4;
-        return stream$.pipe(
-          mergeMap(async (ev) => {
-            const params: Record<string, any> = {};
-            for (const [key, path] of Object.entries(step.params || {})) {
-              params[key] = this.getByPath(ev, path);
-            }
-            try {
-              const enriched = await this.enrichment.get(step.sourceId, params, { cacheTtlMs: step.cacheTtlMs });
-              const next = { ...ev, payload: { ...(ev.payload || {}) } };
-              this.setDeep(next, targetField, enriched);
-              return next;
-            } catch (err: any) {
-              if (onError === 'skip') return null;
-              if (onError === 'pass') return ev;
-              const next = { ...ev, payload: { ...(ev.payload || {}) } };
-              this.setDeep(next, errorField, {
-                message: err?.message || String(err),
-                sourceId: step.sourceId,
-                params
-              });
-              return next;
-            }
-          }, concurrency),
-          filter((ev): ev is OrchestratorEvent => ev !== null)
-        );
+        return this.applyLogicStep(stream$, {
+          logicId: step.sourceId,
+          params: step.params,
+          targetField: step.targetField || `payload.enrichment.${step.sourceId}`,
+          errorField: step.errorField || `payload.enrichmentErrors.${step.sourceId}`,
+          onError: step.onError,
+          cacheTtlMs: step.cacheTtlMs,
+          concurrency: step.concurrency
+        });
+      }
+      case 'logic': {
+        return this.applyLogicStep(stream$, step);
       }
       case 'setTopic': {
         return stream$.pipe(map(ev => ({ ...ev, topic: step.topic })));
@@ -257,6 +254,38 @@ export class WorkflowEngine {
     }
   }
 
+  private applyLogicStep(stream$: Observable<OrchestratorEvent>, step: { logicId: string; params: Record<string, string>; targetField?: string; errorField?: string; onError?: 'skip' | 'pass' | 'setError'; cacheTtlMs?: number; concurrency?: number; }) {
+    const targetField = step.targetField || `payload.logic.${step.logicId}`;
+    const errorField = step.errorField || `payload.logicErrors.${step.logicId}`;
+    const onError = step.onError || 'setError';
+    const concurrency = step.concurrency ?? 4;
+    return stream$.pipe(
+      mergeMap(async (ev) => {
+        const params: Record<string, any> = {};
+        for (const [key, path] of Object.entries(step.params || {})) {
+          params[key] = this.getByPath(ev, path);
+        }
+        try {
+          const enriched = await this.enrichment.get(step.logicId, params, { cacheTtlMs: step.cacheTtlMs });
+          const next = { ...ev, payload: { ...(ev.payload || {}) } };
+          this.setDeep(next, targetField, enriched);
+          return next;
+        } catch (err: any) {
+          if (onError === 'skip') return null;
+          if (onError === 'pass') return ev;
+          const next = { ...ev, payload: { ...(ev.payload || {}) } };
+          this.setDeep(next, errorField, {
+            message: err?.message || String(err),
+            logicId: step.logicId,
+            params
+          });
+          return next;
+        }
+      }, concurrency),
+      filter((ev): ev is OrchestratorEvent => ev !== null)
+    );
+  }
+
   private markVisited(ev: OrchestratorEvent, workflowId: string): OrchestratorEvent | null {
     const visited = Array.isArray(ev.meta?._wfVisited) ? ev.meta!._wfVisited : [];
     if (visited.includes(workflowId)) return null;
@@ -267,5 +296,13 @@ export class WorkflowEngine {
         _wfVisited: [...visited, workflowId]
       }
     };
+  }
+
+  private resolveOutputs(def: WorkflowDefinition): WorkflowOutputDefinition[] {
+    if (Array.isArray(def.outputs) && def.outputs.length > 0) return def.outputs;
+    const outputs: WorkflowOutputDefinition[] = [];
+    outputs.push({ type: 'topic', topic: def.outputTopic });
+    if (def.loopbackToInput) outputs.push({ type: 'loopback', topic: def.outputTopic });
+    return outputs;
   }
 }

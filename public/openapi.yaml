@@ -4,7 +4,7 @@ info:
   title: Orchestrator API
   version: 0.1.0
   description: |
-    SSE 対応のオーケストレータ API。`/v1/orchestrator` を起点に、inputs/outputs/workflows/enrichments を管理します。
+    SSE 対応のオーケストレータ API。`/v1/orchestrator` を起点に、inputs/outputs/workflows/logics/enrichments を管理します。
 servers:
   - url: /v1/orchestrator
 paths:
@@ -260,6 +260,72 @@ paths:
       responses:
         '200': { description: OK }
         '404': { description: Not Found }
+  /logics:
+    get:
+      summary: Logic 定義一覧取得
+      responses:
+        '200': { description: OK }
+    post:
+      summary: Logic 定義作成（Webhook）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogicDefinition'
+      responses:
+        '201': { description: Created }
+  /logics/{id}:
+    get:
+      summary: Logic 定義取得
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: OK }
+        '404': { description: Not Found }
+    put:
+      summary: Logic 定義置換（Webhook）
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LogicDefinition' }
+      responses:
+        '200': { description: OK }
+        '404': { description: Not Found }
+    patch:
+      summary: Logic 定義更新（Webhook）
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LogicDefinition' }
+      responses:
+        '200': { description: OK }
+        '404': { description: Not Found }
+    delete:
+      summary: Logic 定義削除（Webhook）
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '204': { description: No Content }
+        '404': { description: Not Found }
 components:
   schemas:
     InputDefinition:
@@ -323,12 +389,35 @@ components:
               - $ref: '#/components/schemas/StepAggregateCount'
               - $ref: '#/components/schemas/StepBranch'
               - $ref: '#/components/schemas/StepEnrich'
+              - $ref: '#/components/schemas/StepLogic'
               - $ref: '#/components/schemas/StepSetTopic'
               - $ref: '#/components/schemas/StepMergeWithTopics'
               - $ref: '#/components/schemas/StepRaceTopics'
               - $ref: '#/components/schemas/StepTapLog'
         outputTopic: { type: string }
         loopbackToInput: { type: boolean }
+    LogicDefinition:
+      type: object
+      required: [name, type, enabled]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        type: { type: string, enum: [builtin, embedded, webhook] }
+        enabled: { type: boolean }
+        description: { type: string }
+        config:
+          oneOf:
+            - $ref: '#/components/schemas/WebhookLogicConfig'
+            - { type: object }
+    WebhookLogicConfig:
+      type: object
+      required: [url]
+      properties:
+        url: { type: string }
+        method: { type: string, enum: [GET, POST, PUT, PATCH, DELETE] }
+        headers: { type: object, additionalProperties: { type: string } }
+        timeoutMs: { type: integer }
+        ttlMs: { type: integer }
     StepFilterEquals:
       type: object
       properties:
@@ -389,6 +478,17 @@ components:
       properties:
         type: { const: enrich }
         sourceId: { type: string }
+        params: { type: object, additionalProperties: { type: string } }
+        targetField: { type: string }
+        errorField: { type: string }
+        onError: { type: string, enum: [skip, pass, setError] }
+        cacheTtlMs: { type: integer }
+        concurrency: { type: integer }
+    StepLogic:
+      type: object
+      properties:
+        type: { const: logic }
+        logicId: { type: string }
         params: { type: object, additionalProperties: { type: string } }
         targetField: { type: string }
         errorField: { type: string }
