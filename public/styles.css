@@ -10,3 +10,7 @@ th, td { padding: 6px 8px; border: 1px solid #ddd; font-size: 12px; }
 form { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; margin-bottom: 12px; }
 textarea { min-height: 120px; }
 button { padding:6px 10px; }
+pre { background:#f6f8fa; border:1px solid #e5e7eb; padding:10px; overflow:auto; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size: 12px; }
+.toolbar { display:flex; gap: 8px; align-items:center; margin: 8px 0 12px; flex-wrap: wrap; }
+.muted { color:#6b7280; font-size: 12px; }

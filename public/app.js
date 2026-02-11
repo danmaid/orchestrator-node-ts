@@ -12,6 +12,8 @@
   const inputsTbody = qs('#inputsTable tbody');
   const outputsTbody = qs('#outputsTable tbody');
   const wfTbody = qs('#wfTable tbody');
+  const enrichTbody = qs('#enrichTable tbody');
+  const enrichCacheSize = qs('#enrichCacheSize');
 
   async function refreshTables(){
     const [ins, outs, wfs] = await Promise.all([
@@ -22,6 +24,17 @@
     renderEvents(inputsTbody, ins.data);
     renderEvents(outputsTbody, outs.data);
     renderWfs(wfs.data);
+  }
+
+  async function refreshEnrichments(){
+    try {
+      const res = await fetch(apiBase + '/enrichments');
+      const data = await res.json();
+      renderEnrichments(data.data || []);
+      if (enrichCacheSize) enrichCacheSize.textContent = String(data.cache?.size ?? '-');
+    } catch (err) {
+      // ignore
+    }
   }
 
   function renderEvents(tbody, rows){
@@ -63,6 +76,37 @@
       actions.append(btnE, btnD);
       tr.append(actions);
       wfTbody.prepend(tr);
+    });
+  }
+
+  function renderEnrichments(rows){
+    if (!enrichTbody) return;
+    enrichTbody.innerHTML='';
+    rows.forEach(p => {
+      const tr = document.createElement('tr');
+      tr.append(td(p.id));
+      tr.append(td(String(p.ttlMs ?? '-')));
+      tr.append(td(String(p.refreshIntervalMs ?? '-')));
+      tr.append(td(String(!!p.hasRefresh)));
+      const actions = document.createElement('td');
+      const btnR = document.createElement('button');
+      btnR.textContent = 'Refresh';
+      btnR.disabled = !p.hasRefresh;
+      btnR.onclick = async ()=>{
+        if (!p.hasRefresh) return;
+        await fetch(apiBase + `/enrichments/${p.id}/refresh`, {method:'POST'});
+        refreshEnrichments();
+      };
+      const btnC = document.createElement('button');
+      btnC.textContent = 'Clear Cache';
+      btnC.style.marginLeft = '6px';
+      btnC.onclick = async ()=>{
+        await fetch(apiBase + `/enrichments/${p.id}/cache/clear`, {method:'POST'});
+        refreshEnrichments();
+      };
+      actions.append(btnR, btnC);
+      tr.append(actions);
+      enrichTbody.prepend(tr);
     });
   }
 
@@ -116,5 +160,14 @@
   });
   connectSSE('/workflows/stream', ()=>{ refreshTables(); });
 
+  const reloadBtn = qs('#enrichReload');
+  if (reloadBtn) reloadBtn.onclick = ()=>refreshEnrichments();
+  const clearCacheBtn = qs('#enrichClearCache');
+  if (clearCacheBtn) clearCacheBtn.onclick = async ()=>{
+    await fetch(apiBase + '/enrichments/cache', {method:'POST'});
+    refreshEnrichments();
+  };
+
   refreshTables();
+  refreshEnrichments();
 })();

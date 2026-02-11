@@ -4,7 +4,7 @@ info:
   title: Orchestrator API
   version: 0.1.0
   description: |
-    SSE 対応のオーケストレータ API。`/v1/orchestrator` を起点に、inputs/outputs/workflows を管理します。
+    SSE 対応のオーケストレータ API。`/v1/orchestrator` を起点に、inputs/outputs/workflows/enrichments を管理します。
 servers:
   - url: /v1/orchestrator
 paths:
@@ -129,6 +129,39 @@ paths:
       responses:
         '200': { description: OK }
         '404': { description: Not Found }
+  /enrichments:
+    get:
+      summary: 補完ソース一覧取得
+      responses:
+        '200': { description: OK }
+  /enrichments/cache:
+    post:
+      summary: 補完キャッシュ全消去
+      responses:
+        '200': { description: OK }
+  /enrichments/{id}/refresh:
+    post:
+      summary: 補完ソースのリフレッシュ
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: OK }
+        '400': { description: Refresh Not Supported }
+        '404': { description: Not Found }
+  /enrichments/{id}/cache/clear:
+    post:
+      summary: 補完ソース単位のキャッシュ消去
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: OK }
+        '404': { description: Not Found }
 components:
   schemas:
     Workflow:
@@ -150,6 +183,7 @@ components:
               - $ref: '#/components/schemas/StepThrottle'
               - $ref: '#/components/schemas/StepDelay'
               - $ref: '#/components/schemas/StepBranch'
+              - $ref: '#/components/schemas/StepEnrich'
               - $ref: '#/components/schemas/StepSetTopic'
               - $ref: '#/components/schemas/StepMergeWithTopics'
               - $ref: '#/components/schemas/StepRaceTopics'
@@ -203,6 +237,17 @@ components:
           properties:
             set: { type: object }
             outputTopic: { type: string }
+    StepEnrich:
+      type: object
+      properties:
+        type: { const: enrich }
+        sourceId: { type: string }
+        params: { type: object, additionalProperties: { type: string } }
+        targetField: { type: string }
+        errorField: { type: string }
+        onError: { type: string, enum: [skip, pass, setError] }
+        cacheTtlMs: { type: integer }
+        concurrency: { type: integer }
     StepSetTopic:
       type: object
       properties:

@@ -14,6 +14,7 @@
       <a href="#inputs">Inputs</a>
       <a href="#outputs">Outputs</a>
       <a href="#workflows">Workflows</a>
+      <a href="#enrichment">Enrichment</a>
       <a href="/v1/orchestrator/openapi.yaml" target="_blank">OpenAPI</a>
     </nav>
   </header>
@@ -57,6 +58,7 @@
         <label>steps(JSON)
           <textarea name="steps">[
   {"type":"debounce","ms":200},
+  {"type":"enrich","sourceId":"prefectures","params":{"code":"payload.prefCode"},"targetField":"payload.enriched.pref"},
   {"type":"tapLog","label":"debug"},
   {"type":"branch","branches":[
      {"when":{"field":"payload.message","equals":"hello"},
@@ -82,12 +84,91 @@
           <li><b>debounce</b>: 直近の値のみを遅延出力 (ms)</li>
           <li><b>throttle</b>: 高頻度入力を一定間隔で間引き (ms)</li>
           <li><b>delay</b>: 出力を遅延 (ms)</li>
+          <li><b>enrich</b>: 外部データ取得 + キャッシュを行い、結果を payload に補完</li>
           <li><b>setTopic</b>: イベントの topic を差し替え</li>
           <li><b>mergeWithTopics</b>: 他トピックのイベントを合流</li>
           <li><b>raceTopics</b>: 複数トピックのうち最初に来たストリームに追従</li>
           <li><b>branch</b>: 条件にマッチした場合、<i>サイド出力</i>として即時に output を発行 (元イベントは流れ続けます)</li>
           <li><b>tapLog</b>: コンソールにデバッグ出力</li>
         </ul>
+      </details>
+    </section>
+
+    <section id="enrichment">
+      <h2>Enrichment (補完) の使い方</h2>
+      <p>
+        <b>enrich</b> ステップは、イベント内の値をパラメータにして外部 GET を行い、
+        結果を payload に書き込みます。キャッシュがあるため毎回のリクエストは避けられます。
+      </p>
+
+      <div class="toolbar">
+        <button id="enrichReload">補完ソースを再読み込み</button>
+        <button id="enrichClearCache">キャッシュ全消去</button>
+        <span class="muted">cache size: <b id="enrichCacheSize">-</b></span>
+      </div>
+
+      <div class="table-wrap">
+        <table id="enrichTable">
+          <thead>
+            <tr>
+              <th>id</th>
+              <th>ttlMs</th>
+              <th>refreshIntervalMs</th>
+              <th>refreshable</th>
+              <th>actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <h3>1) 入力イベント例</h3>
+      <pre><code>{
+  "source": "demo-ui",
+  "topic": "demo/topic",
+  "type": "demo",
+  "payload": {
+    "message": "hello",
+    "prefCode": 13,
+    "userId": 1
+  }
+}</code></pre>
+
+      <h3>2) ワークフローの例 (steps のみ)</h3>
+      <pre><code>[
+  {
+    "type": "enrich",
+    "sourceId": "prefectures",
+    "params": { "code": "payload.prefCode" },
+    "targetField": "payload.enriched.pref"
+  },
+  {
+    "type": "enrich",
+    "sourceId": "jsonplaceholder-user",
+    "params": { "id": "payload.userId" },
+    "targetField": "payload.enriched.user",
+    "cacheTtlMs": 300000
+  }
+]</code></pre>
+
+      <h3>3) 補完結果 (出力 payload の例)</h3>
+      <pre><code>{
+  "message": "hello",
+  "prefCode": 13,
+  "userId": 1,
+  "enriched": {
+    "pref": { "code": 13, "name": "東京都" },
+    "user": { "id": 1, "name": "Leanne Graham", "username": "Bret", ... }
+  }
+}</code></pre>
+
+      <details>
+        <summary>利用可能な補完ソース (デフォルト)</summary>
+        <ul>
+          <li><b>prefectures</b>: 静的リスト (北海道 / 東京都 / 大阪府 をサンプル内蔵)</li>
+          <li><b>jsonplaceholder-user</b>: https://jsonplaceholder.typicode.com/users/{id} (GET)</li>
+        </ul>
+        <p>追加の補完ソースは <code>src/enrichment.ts</code> にハードコードで定義可能です。</p>
       </details>
     </section>
   </main>

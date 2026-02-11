@@ -8,6 +8,7 @@ import { SSEHub } from './sse';
 import { EventBus } from './eventBus';
 import { OrchestratorEvent, WorkflowDefinition } from './types';
 import { WorkflowEngine } from './workflowEngine';
+import { createDefaultEnrichmentService } from './enrichment';
 
 export function createApi(staticDir: string) {
   const sse = new SSEHub();
@@ -16,6 +17,8 @@ export function createApi(staticDir: string) {
   const outputBuffer = new RingBuffer<OrchestratorEvent>(1000);
 
   const bus = new EventBus();
+
+  const enrichment = createDefaultEnrichmentService();
 
   const engine = new WorkflowEngine(
     bus,
@@ -29,7 +32,8 @@ export function createApi(staticDir: string) {
       bus.publishInput(ev);
       sse.publish('inputs', { kind: 'input', data: ev });
     },
-    (lc) => { sse.publish('workflows', lc); }
+    (lc) => { sse.publish('workflows', lc); },
+    enrichment
   );
 
   // Workflows CRUD
@@ -279,6 +283,32 @@ export function createApi(staticDir: string) {
         wfStore.set(id, wf);
         engine.enable(id, false);
         return sendJson(res, 200, { id, enabled: false });
+      }
+    }
+
+    // Enrichments
+    if (segments[0] === 'enrichments') {
+      if (segments.length === 1 && method === 'GET') {
+        const data = enrichment.listProviders();
+        return sendJson(res, 200, { data, cache: { size: enrichment.cacheSize() } });
+      }
+      if (segments.length === 2 && method === 'POST' && segments[1] === 'cache') {
+        enrichment.clearCache();
+        return sendJson(res, 200, { cleared: true });
+      }
+      if (segments.length === 3 && method === 'POST' && segments[2] === 'refresh') {
+        const id = segments[1];
+        const provider = enrichment.getProvider(id);
+        if (!provider) return sendJson(res, 404, { error: 'not found' });
+        if (!provider.refresh) return sendJson(res, 400, { error: 'refresh_not_supported' });
+        await provider.refresh();
+        return sendJson(res, 200, { id, refreshed: true });
+      }
+      if (segments.length === 4 && method === 'POST' && segments[2] === 'cache' && segments[3] === 'clear') {
+        const id = segments[1];
+        if (!enrichment.getProvider(id)) return sendJson(res, 404, { error: 'not found' });
+        enrichment.clearCache(id);
+        return sendJson(res, 200, { id, cleared: true });
       }
     }
 

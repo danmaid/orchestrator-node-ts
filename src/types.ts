@@ -18,6 +18,16 @@ export type StepDefinition =
   | { type: 'throttle'; ms: number }
   | { type: 'delay'; ms: number }
   | { type: 'branch'; branches: { when: { field: string; equals: any }, set?: Record<string, any>, outputTopic?: string }[], else?: { set?: Record<string, any>, outputTopic?: string } }
+  | {
+      type: 'enrich';
+      sourceId: string;
+      params: Record<string, string>;
+      targetField?: string;
+      errorField?: string;
+      onError?: 'skip' | 'pass' | 'setError';
+      cacheTtlMs?: number;
+      concurrency?: number;
+    }
   | { type: 'setTopic'; topic: string }
   | { type: 'mergeWithTopics'; topics: string[] }
   | { type: 'raceTopics'; topics: string[], windowMs?: number }

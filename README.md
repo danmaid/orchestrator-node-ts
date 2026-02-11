@@ -10,6 +10,7 @@
 - 静的デモ UI: `/v1/orchestrator/` (public/ を配信)。OpenAPI は `public/openapi.yaml` で提供します。
 - 入出力は **1000 件のリングバッファ**で保持し、SSE による状態確認が可能です。
 - ワークフローは RxJS ベースの非同期・並列パイプラインで、`filterEquals`, `mapFields`, `debounce`, `throttle`, `delay`, `branch`, `setTopic`, `mergeWithTopics`, `raceTopics`, `tapLog` などの**よく使うロジック**を同梱。出力から入力への **ループバック**も対応。
+- 外部データを取得して補完する `enrich` ステップを同梱（GET + キャッシュ + 事前定義プロバイダ）。
 
 > ⚠️ 本実装はまずは**メモリ内ストア**で構成しています。プロダクションでは永続化、認可、レート制限、スキーマバリデーション、監視、テスト等を追加してください。
 
@@ -61,12 +62,54 @@ curl -X POST http://localhost:3000/v1/orchestrator/workflows   -H 'Content-Type:
   }'
 ```
 
+### 補完 (enrich) の例
+`enrich` はイベント内の値を使って外部 GET を行い、結果を payload に書き込みます。
+
+```bash
+curl -X POST http://localhost:3000/v1/orchestrator/workflows   -H 'Content-Type: application/json'   -d '{
+    "name":"Enrich Demo",
+    "enabled": true,
+    "sourceTopics":["demo/topic"],
+    "steps":[
+      {"type":"enrich","sourceId":"prefectures","params":{"code":"payload.prefCode"},"targetField":"payload.enriched.pref"},
+      {"type":"enrich","sourceId":"jsonplaceholder-user","params":{"id":"payload.userId"},"targetField":"payload.enriched.user","cacheTtlMs":300000}
+    ],
+    "outputTopic":"demo/output"
+  }'
+```
+
+対応する入力イベント例:
+```bash
+curl -X POST http://localhost:3000/v1/orchestrator/inputs   -H 'Content-Type: application/json'   -d '{
+    "source":"demo-cli",
+    "topic":"demo/topic",
+    "type":"demo",
+    "payload":{"message":"hello","prefCode":13,"userId":1}
+  }'
+```
+
+#### デフォルトの補完ソース
+- `prefectures`: 静的リスト (北海道 / 東京都 / 大阪府 のサンプル)
+- `jsonplaceholder-user`: https://jsonplaceholder.typicode.com/users/{id}
+
+追加の補完ソースは [src/enrichment.ts](src/enrichment.ts) の `createDefaultEnrichmentService()` にハードコードで登録できます。
+
 ### SSE でモニタリング
 - 入力: `GET /v1/orchestrator/inputs/stream`
 - 出力: `GET /v1/orchestrator/outputs/stream`
 - ワークフロー: `GET /v1/orchestrator/workflows/stream`
 
 ブラウザで `/v1/orchestrator/` を開けば、テーブルベースの CRUD とモニタが使えます。
+
+### 補完ソースの管理 (REST 風)
+補完ソース一覧の取得・リフレッシュ・キャッシュ消去を REST 風に実行できます。
+
+- 一覧: `GET /v1/orchestrator/enrichments`
+- 全キャッシュ消去: `POST /v1/orchestrator/enrichments/cache`
+- ソースのリフレッシュ: `POST /v1/orchestrator/enrichments/{id}/refresh`
+- ソース単位キャッシュ消去: `POST /v1/orchestrator/enrichments/{id}/cache/clear`
+
+デモ UI では「Enrichment」セクションから操作できます。
 
 ## 設計メモ
 - **リングバッファ**: `src/ringbuffer.ts` — O(1) で追記・参照。

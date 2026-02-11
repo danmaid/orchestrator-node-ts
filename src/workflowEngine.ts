@@ -1,6 +1,7 @@
 
-import { Observable, debounceTime, throttleTime, delay as rxDelay, filter, map, merge as rxMerge, race as rxRace, timer, takeUntil, tap } from 'rxjs';
+import { Observable, debounceTime, throttleTime, delay as rxDelay, filter, map, merge as rxMerge, race as rxRace, timer, takeUntil, tap, mergeMap } from 'rxjs';
 import { EventBus } from './eventBus';
+import { EnrichmentService } from './enrichment';
 import { OrchestratorEvent, StepDefinition, WorkflowDefinition } from './types';
 
 export class WorkflowEngine {
@@ -9,12 +10,14 @@ export class WorkflowEngine {
   private onOutput: (ev: OrchestratorEvent) => void;
   private onLoopback: (ev: OrchestratorEvent) => void;
   private onLifecycle?: (ev: any) => void;
+  private enrichment: EnrichmentService;
 
-  constructor(bus: EventBus, onOutput: (ev: OrchestratorEvent) => void, onLoopback: (ev: OrchestratorEvent) => void, onLifecycle?: (ev: any) => void) {
+  constructor(bus: EventBus, onOutput: (ev: OrchestratorEvent) => void, onLoopback: (ev: OrchestratorEvent) => void, onLifecycle?: (ev: any) => void, enrichment?: EnrichmentService) {
     this.bus = bus;
     this.onOutput = onOutput;
     this.onLoopback = onLoopback;
     this.onLifecycle = onLifecycle;
+    this.enrichment = enrichment ?? new EnrichmentService();
   }
 
   list() { return Array.from(this.workflows.values()).map(w => w.def); }
@@ -121,6 +124,37 @@ export class WorkflowEngine {
       }
       case 'delay': {
         return stream$.pipe(rxDelay(step.ms));
+      }
+      case 'enrich': {
+        const targetField = step.targetField || `payload.enrichment.${step.sourceId}`;
+        const errorField = step.errorField || `payload.enrichmentErrors.${step.sourceId}`;
+        const onError = step.onError || 'setError';
+        const concurrency = step.concurrency ?? 4;
+        return stream$.pipe(
+          mergeMap(async (ev) => {
+            const params: Record<string, any> = {};
+            for (const [key, path] of Object.entries(step.params || {})) {
+              params[key] = this.getByPath(ev, path);
+            }
+            try {
+              const enriched = await this.enrichment.get(step.sourceId, params, { cacheTtlMs: step.cacheTtlMs });
+              const next = { ...ev, payload: { ...(ev.payload || {}) } };
+              this.setDeep(next, targetField, enriched);
+              return next;
+            } catch (err: any) {
+              if (onError === 'skip') return null;
+              if (onError === 'pass') return ev;
+              const next = { ...ev, payload: { ...(ev.payload || {}) } };
+              this.setDeep(next, errorField, {
+                message: err?.message || String(err),
+                sourceId: step.sourceId,
+                params
+              });
+              return next;
+            }
+          }, concurrency),
+          filter((ev): ev is OrchestratorEvent => ev !== null)
+        );
       }
       case 'setTopic': {
         return stream$.pipe(map(ev => ({ ...ev, topic: step.topic })));
