@@ -9,7 +9,46 @@ export interface OrchestratorEvent {
   meta?: Record<string, any>;
 }
 
-export type ChannelName = 'inputs' | 'outputs' | 'workflows';
+export type InputType = 'webhook' | 'udp' | 'tail';
+
+export type InputMode = 'raw' | 'aggregate';
+
+export interface WebhookInputConfig {
+  path?: string;
+  method?: string;
+  authToken?: string;
+}
+
+export interface UdpInputConfig {
+  port: number;
+  host?: string;
+  codec?: 'utf8' | 'json' | 'raw';
+}
+
+export interface TailInputConfig {
+  path: string;
+  from?: 'start' | 'end';
+  codec?: 'utf8' | 'json';
+  pollIntervalMs?: number;
+}
+
+export type InputConfig = WebhookInputConfig | UdpInputConfig | TailInputConfig;
+
+export interface InputDefinition {
+  id: string;
+  name: string;
+  type: InputType;
+  enabled: boolean;
+  description?: string;
+  workflowId?: string;
+  topic?: string;
+  source?: string;
+  eventType?: string;
+  mode?: InputMode;
+  config: InputConfig;
+}
+
+export type ChannelName = 'inputs' | 'outputs' | 'workflows' | 'events';
 
 export type StepDefinition =
   | { type: 'filterEquals'; field: string; value: any }
@@ -17,6 +56,7 @@ export type StepDefinition =
   | { type: 'debounce'; ms: number }
   | { type: 'throttle'; ms: number }
   | { type: 'delay'; ms: number }
+  | { type: 'aggregateCount'; windowMs: number; keyField?: string; outputTopic?: string; eventType?: string }
   | { type: 'branch'; branches: { when: { field: string; equals: any }, set?: Record<string, any>, outputTopic?: string }[], else?: { set?: Record<string, any>, outputTopic?: string } }
   | {
       type: 'enrich';

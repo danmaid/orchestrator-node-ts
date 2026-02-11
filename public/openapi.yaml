@@ -16,11 +16,104 @@ paths:
           description: OK
   /inputs:
     get:
-      summary: 入力バッファの参照
+      summary: 入力定義一覧取得
       responses:
         '200': { description: OK }
     post:
-      summary: 入力イベントの投入
+      summary: 入力定義作成
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InputDefinition'
+      responses:
+        '201': { description: Created }
+  /inputs/{id}:
+    get:
+      summary: 入力定義取得
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: OK }
+        '404': { description: Not Found }
+    put:
+      summary: 入力定義置換
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InputDefinition' }
+      responses:
+        '200': { description: OK }
+        '404': { description: Not Found }
+    patch:
+      summary: 入力定義更新
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InputDefinition' }
+      responses:
+        '200': { description: OK }
+        '404': { description: Not Found }
+    delete:
+      summary: 入力定義削除
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '204': { description: No Content }
+        '404': { description: Not Found }
+  /inputs/stream:
+    get:
+      summary: 入力イベントの SSE ストリーム
+      responses:
+        '200': { description: text/event-stream }
+  /inputs/{id}/enable:
+    post:
+      summary: 入力定義の有効化
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: OK }
+        '404': { description: Not Found }
+  /inputs/{id}/disable:
+    post:
+      summary: 入力定義の無効化
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: OK }
+        '404': { description: Not Found }
+  /input-events:
+    get:
+      summary: 入力イベントバッファ参照
+      responses:
+        '200': { description: OK }
+    post:
+      summary: 入力イベント投入（手動）
       requestBody:
         required: true
         content:
@@ -36,9 +129,9 @@ paths:
                 meta: { type: object }
       responses:
         '202': { description: Accepted }
-  /inputs/stream:
+  /input-events/stream:
     get:
-      summary: 入力イベントの SSE ストリーム
+      summary: 入力イベント SSE ストリーム
       responses:
         '200': { description: text/event-stream }
   /outputs:
@@ -49,6 +142,11 @@ paths:
   /outputs/stream:
     get:
       summary: 出力イベントの SSE ストリーム
+      responses:
+        '200': { description: text/event-stream }
+  /events/stream:
+    get:
+      summary: 入出力/ワークフローの統合 SSE ストリーム
       responses:
         '200': { description: text/event-stream }
   /workflows:
@@ -164,6 +262,46 @@ paths:
         '404': { description: Not Found }
 components:
   schemas:
+    InputDefinition:
+      type: object
+      required: [name, type, enabled, config]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        type: { type: string, enum: [webhook, udp, tail] }
+        enabled: { type: boolean }
+        description: { type: string }
+        workflowId: { type: string }
+        topic: { type: string }
+        source: { type: string }
+        eventType: { type: string }
+        mode: { type: string, enum: [raw, aggregate] }
+        config:
+          oneOf:
+            - $ref: '#/components/schemas/WebhookInputConfig'
+            - $ref: '#/components/schemas/UdpInputConfig'
+            - $ref: '#/components/schemas/TailInputConfig'
+    WebhookInputConfig:
+      type: object
+      properties:
+        path: { type: string }
+        method: { type: string }
+        authToken: { type: string }
+    UdpInputConfig:
+      type: object
+      required: [port]
+      properties:
+        port: { type: integer }
+        host: { type: string }
+        codec: { type: string, enum: [utf8, json, raw] }
+    TailInputConfig:
+      type: object
+      required: [path]
+      properties:
+        path: { type: string }
+        from: { type: string, enum: [start, end] }
+        codec: { type: string, enum: [utf8, json] }
+        pollIntervalMs: { type: integer }
     Workflow:
       type: object
       required: [name, enabled, steps]
@@ -182,6 +320,7 @@ components:
               - $ref: '#/components/schemas/StepDebounce'
               - $ref: '#/components/schemas/StepThrottle'
               - $ref: '#/components/schemas/StepDelay'
+              - $ref: '#/components/schemas/StepAggregateCount'
               - $ref: '#/components/schemas/StepBranch'
               - $ref: '#/components/schemas/StepEnrich'
               - $ref: '#/components/schemas/StepSetTopic'
@@ -216,6 +355,14 @@ components:
       properties:
         type: { const: delay }
         ms: { type: integer }
+    StepAggregateCount:
+      type: object
+      properties:
+        type: { const: aggregateCount }
+        windowMs: { type: integer }
+        keyField: { type: string }
+        outputTopic: { type: string }
+        eventType: { type: string }
     StepBranch:
       type: object
       properties:

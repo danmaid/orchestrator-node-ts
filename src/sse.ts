@@ -9,6 +9,7 @@ export class SSEHub {
     inputs: new Map(),
     outputs: new Map(),
     workflows: new Map(),
+    events: new Map(),
   };
 
   addClient(channel: ChannelName, req: IncomingMessage, res: ServerResponse) {

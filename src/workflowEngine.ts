@@ -1,5 +1,5 @@
 
-import { Observable, debounceTime, throttleTime, delay as rxDelay, filter, map, merge as rxMerge, race as rxRace, timer, takeUntil, tap, mergeMap } from 'rxjs';
+import { Observable, debounceTime, throttleTime, delay as rxDelay, filter, map, merge as rxMerge, race as rxRace, timer, takeUntil, tap, mergeMap, bufferTime, groupBy } from 'rxjs';
 import { EventBus } from './eventBus';
 import { EnrichmentService } from './enrichment';
 import { OrchestratorEvent, StepDefinition, WorkflowDefinition } from './types';
@@ -58,13 +58,27 @@ export class WorkflowEngine {
 
     let source$: Observable<OrchestratorEvent>;
     if (def.sourceTopics && def.sourceTopics.length > 0) {
-      source$ = this.bus.mergeTopics(def.sourceTopics);
+      const topicSet = new Set(def.sourceTopics);
+      const byTopics$ = this.bus.mergeTopics(def.sourceTopics).pipe(
+        filter(ev => !ev.meta?.workflowId || ev.meta.workflowId === def.id)
+      );
+      const bound$ = this.bus.input$.pipe(
+        filter(ev => ev.meta?.workflowId === def.id && !topicSet.has(ev.topic))
+      );
+      source$ = rxMerge(byTopics$, bound$);
     } else {
-      source$ = this.bus.input$; // all inputs
+      source$ = this.bus.input$.pipe(
+        filter(ev => !ev.meta?.workflowId || ev.meta.workflowId === def.id)
+      );
     }
 
+    // Prevent re-entry loops
+    let stream$ = source$.pipe(
+      map(ev => this.markVisited(ev, def.id)),
+      filter((ev): ev is OrchestratorEvent => ev !== null)
+    );
+
     // Apply steps
-    let stream$ = source$;
     for (const step of def.steps || []) {
       stream$ = this.applyStep(stream$, step, def);
     }
@@ -124,6 +138,53 @@ export class WorkflowEngine {
       }
       case 'delay': {
         return stream$.pipe(rxDelay(step.ms));
+      }
+      case 'aggregateCount': {
+        const windowMs = step.windowMs;
+        if (step.keyField) {
+          return stream$.pipe(
+            groupBy(ev => this.getByPath(ev, step.keyField!)),
+            mergeMap(group$ =>
+              group$.pipe(
+                bufferTime(windowMs),
+                filter(batch => batch.length > 0),
+                map(batch => {
+                  const last = batch[batch.length - 1];
+                  return {
+                    ...last,
+                    type: step.eventType || 'aggregate_count',
+                    topic: step.outputTopic || last.topic,
+                    payload: {
+                      count: batch.length,
+                      key: group$.key,
+                      windowMs,
+                      windowStart: new Date(Date.now() - windowMs).toISOString(),
+                      windowEnd: new Date().toISOString()
+                    }
+                  } as OrchestratorEvent;
+                })
+              )
+            )
+          );
+        }
+        return stream$.pipe(
+          bufferTime(windowMs),
+          filter(batch => batch.length > 0),
+          map(batch => {
+            const last = batch[batch.length - 1];
+            return {
+              ...last,
+              type: step.eventType || 'aggregate_count',
+              topic: step.outputTopic || last.topic,
+              payload: {
+                count: batch.length,
+                windowMs,
+                windowStart: new Date(Date.now() - windowMs).toISOString(),
+                windowEnd: new Date().toISOString()
+              }
+            } as OrchestratorEvent;
+          })
+        );
       }
       case 'enrich': {
         const targetField = step.targetField || `payload.enrichment.${step.sourceId}`;
@@ -194,5 +255,17 @@ export class WorkflowEngine {
       default:
         return stream$;
     }
+  }
+
+  private markVisited(ev: OrchestratorEvent, workflowId: string): OrchestratorEvent | null {
+    const visited = Array.isArray(ev.meta?._wfVisited) ? ev.meta!._wfVisited : [];
+    if (visited.includes(workflowId)) return null;
+    return {
+      ...ev,
+      meta: {
+        ...(ev.meta || {}),
+        _wfVisited: [...visited, workflowId]
+      }
+    };
   }
 }

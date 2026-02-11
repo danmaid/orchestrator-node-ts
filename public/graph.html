@@ -1,0 +1,83 @@
+
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Orchestrator Graph Demo</title>
+  <link rel="stylesheet" href="/v1/orchestrator/graph.css" />
+</head>
+<body>
+  <header>
+    <h1>Orchestrator Graph Demo</h1>
+    <nav>
+      <a href="/v1/orchestrator/">Main Demo</a>
+      <a href="/v1/orchestrator/openapi.yaml" target="_blank">OpenAPI</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="panel">
+      <div class="panel-left">
+        <div class="graph-wrap">
+          <svg id="graphSvg" viewBox="0 0 1200 600" preserveAspectRatio="xMidYMid meet"></svg>
+        </div>
+        <div class="legend">
+          <span class="pill input">Input</span>
+          <span class="pill workflow">Workflow</span>
+          <span class="pill step">Step</span>
+          <span class="pill output">Output</span>
+          <span class="pill event">Event</span>
+        </div>
+      </div>
+      <div class="panel-right">
+        <div class="card">
+          <h3>Status</h3>
+          <div class="stats">
+            <div><span class="label">Inputs</span><span id="statInputs" class="value">0</span></div>
+            <div><span class="label">Outputs</span><span id="statOutputs" class="value">0</span></div>
+            <div><span class="label">Workflows</span><span id="statWorkflows" class="value">0</span></div>
+            <div><span class="label">Active Links</span><span id="statLinks" class="value">0</span></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Controls</h3>
+          <div class="controls">
+            <button id="toggleAnim">Pause</button>
+            <button id="resetGraph">Reset</button>
+            <button id="fitGraph">Fit</button>
+          </div>
+          <p class="muted">リアルタイムで Input → Workflow → Output の流れを可視化します。</p>
+        </div>
+
+        <div class="card">
+          <h3>Demo Generator</h3>
+          <div class="controls">
+            <button id="seedDemo">Seed Demo</button>
+            <button id="sendDummy">Send Dummy Events</button>
+            <button id="startStream">Start Stream</button>
+            <button id="stopStream">Stop Stream</button>
+          </div>
+          <p class="muted">ダミーの Workflow と Input を作成し、イベントを流します。</p>
+          <div id="demoStatus" class="muted"></div>
+        </div>
+
+        <div class="card">
+          <h3>Recent Events</h3>
+          <div id="recentEvents" class="events"></div>
+        </div>
+
+        <div class="card">
+          <h3>Workflow Detail</h3>
+          <div id="workflowDetail" class="detail">
+            <div class="muted">ワークフローをクリックすると詳細が表示されます。</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/v1/orchestrator/graph.js"></script>
+</body>
+</html>

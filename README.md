@@ -4,12 +4,13 @@
 **日本語 README** — SSE 対応のオーケストレータ API と簡易ワークフロー実行エンジンのスターター一式です。
 
 - すべての REST 風エンドポイントは `/v1/orchestrator` を起点にしています。
-- 入力: `/v1/orchestrator/inputs` (POST でイベント投入、GET で最新 1000 件まで参照、GET /stream で SSE)
+- 入力定義: `/v1/orchestrator/inputs` (CRUD + enable/disable)
+- 入力イベント: `/v1/orchestrator/input-events` (POST でイベント投入、GET で最新 1000 件まで参照、GET /stream で SSE)
 - 出力: `/v1/orchestrator/outputs` (GET で最新 1000 件まで参照、GET /stream で SSE)
 - ワークフロー: `/v1/orchestrator/workflows` (CRUD + enable/disable、GET /stream で SSE)
 - 静的デモ UI: `/v1/orchestrator/` (public/ を配信)。OpenAPI は `public/openapi.yaml` で提供します。
 - 入出力は **1000 件のリングバッファ**で保持し、SSE による状態確認が可能です。
-- ワークフローは RxJS ベースの非同期・並列パイプラインで、`filterEquals`, `mapFields`, `debounce`, `throttle`, `delay`, `branch`, `setTopic`, `mergeWithTopics`, `raceTopics`, `tapLog` などの**よく使うロジック**を同梱。出力から入力への **ループバック**も対応。
+- ワークフローは RxJS ベースの非同期・並列パイプラインで、`filterEquals`, `mapFields`, `debounce`, `throttle`, `delay`, `aggregateCount`, `branch`, `setTopic`, `mergeWithTopics`, `raceTopics`, `tapLog` などの**よく使うロジック**を同梱。出力から入力への **ループバック**も対応。
 - 外部データを取得して補完する `enrich` ステップを同梱（GET + キャッシュ + 事前定義プロバイダ）。
 
 > ⚠️ 本実装はまずは**メモリ内ストア**で構成しています。プロダクションでは永続化、認可、レート制限、スキーマバリデーション、監視、テスト等を追加してください。
@@ -33,12 +34,39 @@ npm run dev
 
 ### 例: 入力イベント投入
 ```bash
-curl -X POST http://localhost:3000/v1/orchestrator/inputs   -H 'Content-Type: application/json'   -d '{
+curl -X POST http://localhost:3000/v1/orchestrator/input-events   -H 'Content-Type: application/json'   -d '{
     "source":"demo-cli",
     "topic":"sensors/temperature",
     "type":"reading",
     "payload":{"value": 22.8, "unit":"C"}
   }'
+```
+
+### 例: 入力定義の作成 (webhook / udp / tail)
+```bash
+curl -X POST http://localhost:3000/v1/orchestrator/inputs   -H 'Content-Type: application/json'   -d '{
+  "name": "webhook-orders",
+  "type": "webhook",
+  "enabled": true,
+  "workflowId": "wf-orders",
+  "config": { "path": "/hooks/orders", "method": "POST" }
+}'
+
+curl -X POST http://localhost:3000/v1/orchestrator/inputs   -H 'Content-Type: application/json'   -d '{
+  "name": "udp-sensors",
+  "type": "udp",
+  "enabled": true,
+  "topic": "sensors/udp",
+  "config": { "port": 40123, "codec": "json" }
+}'
+
+curl -X POST http://localhost:3000/v1/orchestrator/inputs   -H 'Content-Type: application/json'   -d '{
+  "name": "tail-log",
+  "type": "tail",
+  "enabled": true,
+  "topic": "logs/app",
+  "config": { "path": "/var/log/app.log", "from": "end", "codec": "utf8" }
+}'
 ```
 
 ### ワークフロー例 (debounce → 条件分岐 → 出力)
@@ -80,7 +108,7 @@ curl -X POST http://localhost:3000/v1/orchestrator/workflows   -H 'Content-Type:
 
 対応する入力イベント例:
 ```bash
-curl -X POST http://localhost:3000/v1/orchestrator/inputs   -H 'Content-Type: application/json'   -d '{
+curl -X POST http://localhost:3000/v1/orchestrator/input-events   -H 'Content-Type: application/json'   -d '{
     "source":"demo-cli",
     "topic":"demo/topic",
     "type":"demo",
@@ -95,7 +123,7 @@ curl -X POST http://localhost:3000/v1/orchestrator/inputs   -H 'Content-Type: ap
 追加の補完ソースは [src/enrichment.ts](src/enrichment.ts) の `createDefaultEnrichmentService()` にハードコードで登録できます。
 
 ### SSE でモニタリング
-- 入力: `GET /v1/orchestrator/inputs/stream`
+- 入力: `GET /v1/orchestrator/inputs/stream` または `GET /v1/orchestrator/input-events/stream`
 - 出力: `GET /v1/orchestrator/outputs/stream`
 - ワークフロー: `GET /v1/orchestrator/workflows/stream`
 

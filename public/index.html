@@ -11,17 +11,56 @@
   <header>
     <h1>Orchestrator Demo UI</h1>
     <nav>
-      <a href="#inputs">Inputs</a>
+      <a href="#input-defs">Input Definitions</a>
+      <a href="#input-events">Input Events</a>
       <a href="#outputs">Outputs</a>
       <a href="#workflows">Workflows</a>
+      <a href="#samples">Samples</a>
       <a href="#enrichment">Enrichment</a>
+      <a href="/v1/orchestrator/graph.html" target="_blank">Graph Demo</a>
       <a href="/v1/orchestrator/openapi.yaml" target="_blank">OpenAPI</a>
     </nav>
   </header>
 
   <main>
-    <section id="inputs">
-      <h2>Inputs</h2>
+    <section id="input-defs">
+      <h2>Input Definitions</h2>
+      <form id="inputDefForm">
+        <label>name <input name="name" value="webhook-orders" required></label>
+        <label>type
+          <select name="type">
+            <option value="webhook" selected>webhook</option>
+            <option value="udp">udp</option>
+            <option value="tail">tail</option>
+          </select>
+        </label>
+        <label>enabled <input type="checkbox" name="enabled" checked></label>
+        <label>workflowId <input name="workflowId" value="wf-orders"></label>
+        <label>topic <input name="topic" value="orders/new"></label>
+        <label>source <input name="source" value="input:webhook-orders"></label>
+        <label>eventType <input name="eventType" value="order"></label>
+        <label>config(JSON)
+          <textarea name="config">{
+  "path": "/hooks/orders",
+  "method": "POST"
+}</textarea></label>
+        <div class="toolbar">
+          <button type="submit">Create Input</button>
+          <button type="button" id="sampleWebhookBtn">Sample: Webhook</button>
+          <button type="button" id="sampleUdpBtn">Sample: UDP</button>
+          <button type="button" id="sampleTailBtn">Sample: Tail</button>
+        </div>
+      </form>
+      <div class="table-wrap">
+        <table id="inputDefsTable">
+          <thead><tr><th>id</th><th>name</th><th>type</th><th>enabled</th><th>workflowId</th><th>topic</th><th>source</th><th>actions</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="input-events">
+      <h2>Input Events</h2>
       <form id="inputForm">
         <label>source <input name="source" value="demo-ui" required></label>
         <label>topic <input name="topic" value="demo/topic" required></label>
@@ -84,6 +123,7 @@
           <li><b>debounce</b>: 直近の値のみを遅延出力 (ms)</li>
           <li><b>throttle</b>: 高頻度入力を一定間隔で間引き (ms)</li>
           <li><b>delay</b>: 出力を遅延 (ms)</li>
+          <li><b>aggregateCount</b>: 一定時間窓で件数を集計 (windowMs, keyField)</li>
           <li><b>enrich</b>: 外部データ取得 + キャッシュを行い、結果を payload に補完</li>
           <li><b>setTopic</b>: イベントの topic を差し替え</li>
           <li><b>mergeWithTopics</b>: 他トピックのイベントを合流</li>
@@ -91,6 +131,55 @@
           <li><b>branch</b>: 条件にマッチした場合、<i>サイド出力</i>として即時に output を発行 (元イベントは流れ続けます)</li>
           <li><b>tapLog</b>: コンソールにデバッグ出力</li>
         </ul>
+      </details>
+    </section>
+
+    <section id="samples">
+      <h2>Samples</h2>
+      <div class="grid">
+        <div class="card">
+          <span class="badge">Input Definition</span>
+          <h4>Webhook: Orders</h4>
+          <p>HTTP で注文イベントを取り込み、指定 workflow にバインド。</p>
+          <div class="stack">
+            <button type="button" id="createWebhookSample">Create Input</button>
+            <span class="mono">POST /v1/orchestrator/hooks/orders</span>
+          </div>
+        </div>
+        <div class="card">
+          <span class="badge">Input Definition</span>
+          <h4>UDP: Sensors</h4>
+          <p>UDP で JSON を受け、1秒集計ワークフローへ流します。</p>
+          <div class="stack">
+            <button type="button" id="createUdpSample">Create Input</button>
+            <span class="mono">udp://:40123</span>
+          </div>
+        </div>
+        <div class="card">
+          <span class="badge">Workflow</span>
+          <h4>Aggregate Count</h4>
+          <p>1秒窓で `payload.deviceId` ごとの件数を集計。</p>
+          <div class="stack">
+            <button type="button" id="createAggregateWf">Create Workflow</button>
+            <button type="button" id="sendBurst">Send Burst Events</button>
+          </div>
+        </div>
+        <div class="card">
+          <span class="badge">Workflow</span>
+          <h4>Enrich Orders</h4>
+          <p>prefectures とユーザー情報を補完して出力。</p>
+          <div class="stack">
+            <button type="button" id="createEnrichWf">Create Workflow</button>
+            <button type="button" id="sendOrderEvent">Send Sample Event</button>
+          </div>
+        </div>
+      </div>
+      <details>
+        <summary>サンプル JSON</summary>
+        <div class="split">
+          <pre><code id="sampleInputWebhook" class="mono"></code></pre>
+          <pre><code id="sampleWfAggregate" class="mono"></code></pre>
+        </div>
       </details>
     </section>
 
