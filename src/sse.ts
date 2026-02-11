@@ -1,8 +1,8 @@
 
-import { Response, Request } from 'express';
+import { IncomingMessage, ServerResponse } from 'http';
 import { ChannelName } from './types';
 
-interface Client { id: string; res: Response; }
+interface Client { id: string; res: ServerResponse; }
 
 export class SSEHub {
   private channels: Record<ChannelName, Map<string, Client>> = {
@@ -11,11 +11,14 @@ export class SSEHub {
     workflows: new Map(),
   };
 
-  addClient(channel: ChannelName, req: Request, res: Response) {
+  addClient(channel: ChannelName, req: IncomingMessage, res: ServerResponse) {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
     res.flushHeaders?.();
 
     res.write(`event: hello
