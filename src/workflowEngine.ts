@@ -7,12 +7,12 @@ import { OrchestratorEvent, StepDefinition, WorkflowDefinition, WorkflowOutputDe
 export class WorkflowEngine {
   private bus: EventBus;
   private workflows = new Map<string, { def: WorkflowDefinition, unsubscribe: () => void }>();
-  private onOutput: (ev: OrchestratorEvent) => void;
+  private onOutput: (ev: OrchestratorEvent, outDef?: WorkflowOutputDefinition) => void;
   private onLoopback: (ev: OrchestratorEvent) => void;
   private onLifecycle?: (ev: any) => void;
   private enrichment: EnrichmentService;
 
-  constructor(bus: EventBus, onOutput: (ev: OrchestratorEvent) => void, onLoopback: (ev: OrchestratorEvent) => void, onLifecycle?: (ev: any) => void, enrichment?: EnrichmentService) {
+  constructor(bus: EventBus, onOutput: (ev: OrchestratorEvent, outDef?: WorkflowOutputDefinition) => void, onLoopback: (ev: OrchestratorEvent) => void, onLifecycle?: (ev: any) => void, enrichment?: EnrichmentService) {
     this.bus = bus;
     this.onOutput = onOutput;
     this.onLoopback = onLoopback;
@@ -102,7 +102,7 @@ export class WorkflowEngine {
           ...baseOut,
           topic: outDef.topic || baseOut.topic
         };
-        this.onOutput(next);
+        this.onOutput(next, outDef);
       });
     });
 
@@ -205,7 +205,7 @@ export class WorkflowEngine {
             topic: outTopic,
             meta: { ...(ev.meta || {}), workflowId: def.id }
           };
-          this.onOutput(baseOut);
+          this.onOutput(baseOut, { type: 'topic', topic: outTopic });
         }));
       }
       case 'enrich': {

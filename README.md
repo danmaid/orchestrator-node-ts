@@ -6,7 +6,7 @@
 - すべての REST 風エンドポイントは `/v1/orchestrator` を起点にしています。
 - 入力定義: `/v1/orchestrator/inputs` (CRUD + enable/disable)
 - 入力イベント: `/v1/orchestrator/input-events` (POST でイベント投入、GET で最新 1000 件まで参照、GET /stream で SSE)
-- 出力: `/v1/orchestrator/outputs` (GET で最新 1000 件まで参照、GET /stream で SSE)
+- 出力定義: `/v1/orchestrator/outputs` (CRUD + enable/disable)
 - ワークフロー: `/v1/orchestrator/workflows` (CRUD + enable/disable、GET /stream で SSE)
 - 静的デモ UI: `/v1/orchestrator/` (public/ を配信)。OpenAPI は `public/openapi.yaml` で提供します。
 - 入出力は **1000 件のリングバッファ**で保持し、SSE による状態確認が可能です。
@@ -90,6 +90,21 @@ curl -X POST http://localhost:3000/v1/orchestrator/workflows   -H 'Content-Type:
   }'
 ```
 
+### ブロードキャスト output の例
+`outputs` に `type: "broadcast"` を指定すると、SSE と WebSocket のブロードキャストエンドポイントへ配信されます。
+
+```bash
+curl -X POST http://localhost:3000/v1/orchestrator/workflows   -H 'Content-Type: application/json'   -d '{
+    "name":"Broadcast Demo",
+    "enabled": true,
+    "sourceTopics":["demo/topic"],
+    "steps":[],
+    "outputs":[
+      {"type":"broadcast","channel":"broadcast","topic":"demo/broadcast"}
+    ]
+  }'
+```
+
 ### 補完 (enrich) の例
 `enrich` はイベント内の値を使って外部 GET を行い、結果を payload に書き込みます。
 
@@ -126,6 +141,16 @@ curl -X POST http://localhost:3000/v1/orchestrator/input-events   -H 'Content-Ty
 - 入力: `GET /v1/orchestrator/inputs/stream` または `GET /v1/orchestrator/input-events/stream`
 - 出力: `GET /v1/orchestrator/outputs/stream`
 - ワークフロー: `GET /v1/orchestrator/workflows/stream`
+- ブロードキャスト: `GET /v1/orchestrator/broadcast/stream`
+
+### 出力定義
+- 一覧: `GET /v1/orchestrator/outputs`
+- 取得: `GET /v1/orchestrator/outputs/{id}`
+
+### WebSocket でモニタリング
+- 出力: `ws://localhost:3000/v1/orchestrator/outputs/stream`
+- イベント: `ws://localhost:3000/v1/orchestrator/events/ws`
+- ブロードキャスト: `ws://localhost:3000/v1/orchestrator/broadcast/ws`
 
 ブラウザで `/v1/orchestrator/` を開けば、テーブルベースの CRUD とモニタが使えます。
 

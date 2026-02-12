@@ -102,7 +102,7 @@
           <label>outputs(JSON)
             <textarea name="outputs">[
         {"type":"topic","topic":"demo/output"},
-        {"type":"loopback","topic":"demo/loopback"}
+        {"type":"broadcast","channel":"broadcast","topic":"demo/broadcast"}
       ]</textarea></label>
           <label>steps(JSON)
             <textarea name="steps">[
@@ -207,7 +207,7 @@
       <div class="panel-body">
         <div class="table-wrap">
           <table id="outputsTable">
-            <thead><tr><th>time</th><th>source</th><th>topic</th><th>type</th><th>payload</th></tr></thead>
+            <thead><tr><th>id</th><th>name</th><th>type</th><th>enabled</th><th>channel</th><th>path</th><th>builtin</th></tr></thead>
             <tbody></tbody>
           </table>
         </div>

@@ -136,17 +136,105 @@ paths:
         '200': { description: text/event-stream }
   /outputs:
     get:
-      summary: 出力バッファの参照
+      summary: 出力定義一覧取得
       responses:
         '200': { description: OK }
+    post:
+      summary: 出力定義作成
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OutputDefinition'
+      responses:
+        '201': { description: Created }
+  /outputs/{id}:
+    get:
+      summary: 出力定義取得
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: OK }
+        '404': { description: Not Found }
+    put:
+      summary: 出力定義置換
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OutputDefinition' }
+      responses:
+        '200': { description: OK }
+        '404': { description: Not Found }
+    patch:
+      summary: 出力定義更新
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OutputDefinition' }
+      responses:
+        '200': { description: OK }
+        '404': { description: Not Found }
+    delete:
+      summary: 出力定義削除
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '204': { description: No Content }
+        '404': { description: Not Found }
   /outputs/stream:
     get:
       summary: 出力イベントの SSE ストリーム
       responses:
         '200': { description: text/event-stream }
+  /outputs/{id}/enable:
+    post:
+      summary: 出力定義の有効化
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: OK }
+        '404': { description: Not Found }
+  /outputs/{id}/disable:
+    post:
+      summary: 出力定義の無効化
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: OK }
+        '404': { description: Not Found }
   /events/stream:
     get:
       summary: 入出力/ワークフローの統合 SSE ストリーム
+      responses:
+        '200': { description: text/event-stream }
+  /broadcast/stream:
+    get:
+      summary: ブロードキャスト SSE ストリーム
       responses:
         '200': { description: text/event-stream }
   /workflows:
@@ -531,5 +619,21 @@ components:
     WorkflowOutputDefinition:
       type: object
       properties:
-        type: { type: string, enum: [topic] }
+        type: { type: string, enum: [topic, broadcast] }
         topic: { type: string }
+        channel: { type: string, enum: [inputs, outputs, workflows, events, broadcast] }
+        eventName: { type: string }
+    OutputDefinition:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        type: { type: string, enum: [sse, ws] }
+        enabled: { type: boolean }
+        description: { type: string }
+        builtin: { type: boolean }
+        config:
+          type: object
+          properties:
+            path: { type: string }
+            channel: { type: string, enum: [inputs, outputs, workflows, events, broadcast] }

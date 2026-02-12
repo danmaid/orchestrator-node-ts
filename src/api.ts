@@ -5,8 +5,9 @@ import fs from 'fs';
 import path from 'path';
 import { RingBuffer } from './ringbuffer';
 import { SSEHub } from './sse';
+import { WsHub, isChannelName } from './ws';
 import { EventBus } from './eventBus';
-import { InputDefinition, InputType, LogicDefinition, LogicType, OrchestratorEvent, WebhookLogicConfig, WorkflowDefinition } from './types';
+import { InputDefinition, InputType, LogicDefinition, LogicType, OrchestratorEvent, OutputDefinition, WebhookLogicConfig, WorkflowDefinition } from './types';
 import { WorkflowEngine } from './workflowEngine';
 import { WebhookProvider } from './enrichment';
 import { createDefaultEnrichmentService, getBuiltinLogicDefinitions, getRxjsLogicDefinitions } from './logics';
@@ -14,12 +15,14 @@ import { InputManager, normalizeWebhookPath } from './inputManager';
 
 export function createApi(staticDir: string) {
   const sse = new SSEHub();
+  const ws = new WsHub();
 
   const inputBuffer = new RingBuffer<OrchestratorEvent>(1000);
   const outputBuffer = new RingBuffer<OrchestratorEvent>(1000);
 
   const bus = new EventBus();
   const inputStore = new Map<string, InputDefinition>();
+  const outputStore = new Map<string, OutputDefinition>();
   const LOOPBACK_INPUT_ID = 'loopback';
 
   const loopbackInput: InputDefinition = {
@@ -65,11 +68,19 @@ export function createApi(staticDir: string) {
 
   const engine = new WorkflowEngine(
     bus,
-    (ev) => { // onOutput
+    (ev, outDef) => { // onOutput
       outputBuffer.push(ev);
       bus.publishOutput(ev);
       sse.publish('outputs', { kind: 'output', data: ev });
       sse.publish('events', { kind: 'output', data: ev });
+
+      if (outDef?.type === 'broadcast') {
+        const channel = isChannelName(outDef.channel || '') ? outDef.channel! : 'broadcast';
+        const eventName = outDef.eventName || 'message';
+        const payload = { kind: 'broadcast', event: eventName, data: ev };
+        sse.publish(channel, payload, eventName);
+        ws.publish(channel, payload);
+      }
     },
     (ev) => { // onLoopback (input only)
       inputBuffer.push(ev);
@@ -86,6 +97,57 @@ export function createApi(staticDir: string) {
 
   const BASE_PATH = '/v1/orchestrator';
   const MAX_BODY_BYTES = 2 * 1024 * 1024;
+
+  const BUILTIN_OUTPUTS: OutputDefinition[] = [
+    {
+      id: 'outputs-sse',
+      name: 'outputs/stream',
+      type: 'sse',
+      enabled: true,
+      description: 'built-in outputs SSE stream',
+      config: { path: `${BASE_PATH}/outputs/stream`, channel: 'outputs' },
+      builtin: true
+    },
+    {
+      id: 'outputs-ws',
+      name: 'outputs/stream',
+      type: 'ws',
+      enabled: true,
+      description: 'built-in outputs WebSocket stream',
+      config: { path: `${BASE_PATH}/outputs/stream`, channel: 'outputs' },
+      builtin: true
+    }
+  ];
+
+  function syncBuiltinOutputs() {
+    for (const def of BUILTIN_OUTPUTS) {
+      outputStore.set(def.id, def);
+    }
+    for (const [id, def] of outputStore.entries()) {
+      if (!def.builtin) continue;
+      if (!BUILTIN_OUTPUTS.find((d) => d.id === id)) outputStore.delete(id);
+    }
+  }
+
+  syncBuiltinOutputs();
+
+  function buildOutputDefinition(body: any, idOverride?: string): OutputDefinition {
+    const type = body?.type as OutputDefinition['type'] | undefined;
+    if (!type || !['sse', 'ws'].includes(type)) {
+      throw new Error('invalid_output_type');
+    }
+    const id = idOverride || body?.id || randomUUID();
+    const def: OutputDefinition = {
+      id,
+      name: body?.name || `output-${id.slice(0, 8)}`,
+      type,
+      enabled: body?.enabled ?? true,
+      description: body?.description,
+      config: body?.config || {},
+      builtin: body?.builtin ?? false
+    };
+    return def;
+  }
 
   function setCors(res: ServerResponse) {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -105,7 +167,7 @@ export function createApi(staticDir: string) {
     return accept.includes('text/event-stream') || req.headers['accept'] === undefined;
   }
 
-  function sendStreamHelp(res: ServerResponse, path: string) {
+  function sendStreamHelp(res: ServerResponse, path: string, extra?: string) {
     res.statusCode = 200;
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.end(`<!doctype html>
@@ -117,6 +179,7 @@ export function createApi(staticDir: string) {
     <li><a href="/v1/orchestrator/">Main Demo</a></li>
     <li><a href="/v1/orchestrator/graph.html">Graph Demo</a></li>
   </ul>
+  ${extra ? `<p>${extra}</p>` : ''}
   <p>ストリームを確認したい場合は、開発者ツールの Network タブで確認してください。</p>
 </body></html>`);
   }
@@ -487,18 +550,104 @@ export function createApi(staticDir: string) {
       }
     }
 
-    // Outputs
+    // Outputs (definitions)
     if (segments[0] === 'outputs') {
-      if (segments.length === 1 && method === 'GET') {
-        const data = outputBuffer.toArray();
-        return sendJson(res, 200, { size: data.length, maxSize: outputBuffer.maxSize(), data });
-      }
       if (segments.length === 2 && segments[1] === 'stream' && method === 'GET') {
         if (!isSseRequest(req)) return sendStreamHelp(res, '/v1/orchestrator/outputs/stream');
         sse.addClient('outputs', req, res);
         return;
       }
+      if (segments.length === 2 && segments[1] === 'ws' && method === 'GET') {
+        return sendStreamHelp(res, '/v1/orchestrator/outputs/stream', 'WebSocket は /v1/orchestrator/outputs/stream に統合されました。');
+      }
+      if (segments.length === 1 && method === 'GET') {
+        syncBuiltinOutputs();
+        return sendJson(res, 200, { data: Array.from(outputStore.values()) });
+      }
+      if (segments.length === 1 && method === 'POST') {
+        try {
+          const body = await readJsonBody(req);
+          const def = buildOutputDefinition(body);
+          def.builtin = false;
+          if (outputStore.has(def.id)) return sendJson(res, 409, { error: 'id_already_exists' });
+          outputStore.set(def.id, def);
+          return sendJson(res, 201, def);
+        } catch (err: any) {
+          if (err?.message === 'payload_too_large') return sendJson(res, 413, { error: 'payload too large' });
+          if (err?.message === 'invalid_output_type') return sendJson(res, 400, { error: 'invalid_output_type' });
+          return sendJson(res, 400, { error: 'invalid json' });
+        }
+      }
+      if (segments.length === 2 && method === 'GET') {
+        syncBuiltinOutputs();
+        const def = outputStore.get(segments[1]);
+        if (!def) return sendJson(res, 404, { error: 'not found' });
+        return sendJson(res, 200, def);
+      }
+      if (segments.length === 2 && method === 'PUT') {
+        const id = segments[1];
+        const old = outputStore.get(id);
+        if (!old) return sendJson(res, 404, { error: 'not found' });
+        if (old.builtin) return sendJson(res, 400, { error: 'builtin_output_is_readonly' });
+        try {
+          const body = await readJsonBody(req);
+          const def = buildOutputDefinition(body, id);
+          def.builtin = false;
+          outputStore.set(id, def);
+          return sendJson(res, 200, def);
+        } catch (err: any) {
+          if (err?.message === 'payload_too_large') return sendJson(res, 413, { error: 'payload too large' });
+          if (err?.message === 'invalid_output_type') return sendJson(res, 400, { error: 'invalid_output_type' });
+          return sendJson(res, 400, { error: 'invalid json' });
+        }
+      }
+      if (segments.length === 2 && method === 'PATCH') {
+        const id = segments[1];
+        const old = outputStore.get(id);
+        if (!old) return sendJson(res, 404, { error: 'not found' });
+        if (old.builtin) return sendJson(res, 400, { error: 'builtin_output_is_readonly' });
+        try {
+          const body = await readJsonBody(req);
+          const merged = { ...old, ...body, config: { ...(old.config || {}), ...(body?.config || {}) } };
+          const def = buildOutputDefinition(merged, id);
+          def.builtin = false;
+          outputStore.set(id, def);
+          return sendJson(res, 200, def);
+        } catch (err: any) {
+          if (err?.message === 'payload_too_large') return sendJson(res, 413, { error: 'payload too large' });
+          if (err?.message === 'invalid_output_type') return sendJson(res, 400, { error: 'invalid_output_type' });
+          return sendJson(res, 400, { error: 'invalid json' });
+        }
+      }
+      if (segments.length === 2 && method === 'DELETE') {
+        const id = segments[1];
+        const old = outputStore.get(id);
+        if (!old) return sendJson(res, 404, { error: 'not found' });
+        if (old.builtin) return sendJson(res, 400, { error: 'builtin_output_is_readonly' });
+        outputStore.delete(id);
+        res.statusCode = 204;
+        return res.end();
+      }
+      if (segments.length === 3 && method === 'POST' && segments[2] === 'enable') {
+        const id = segments[1];
+        const def = outputStore.get(id);
+        if (!def) return sendJson(res, 404, { error: 'not found' });
+        if (def.builtin) return sendJson(res, 400, { error: 'builtin_output_is_readonly' });
+        def.enabled = true;
+        outputStore.set(id, def);
+        return sendJson(res, 200, { id, enabled: true });
+      }
+      if (segments.length === 3 && method === 'POST' && segments[2] === 'disable') {
+        const id = segments[1];
+        const def = outputStore.get(id);
+        if (!def) return sendJson(res, 404, { error: 'not found' });
+        if (def.builtin) return sendJson(res, 400, { error: 'builtin_output_is_readonly' });
+        def.enabled = false;
+        outputStore.set(id, def);
+        return sendJson(res, 200, { id, enabled: false });
+      }
     }
+
 
     // Events (consolidated stream)
     if (segments[0] === 'events') {
@@ -506,6 +655,21 @@ export function createApi(staticDir: string) {
         if (!isSseRequest(req)) return sendStreamHelp(res, '/v1/orchestrator/events/stream');
         sse.addClient('events', req, res);
         return;
+      }
+      if (segments.length === 2 && segments[1] === 'ws' && method === 'GET') {
+        return sendStreamHelp(res, '/v1/orchestrator/events/ws', 'WebSocket エンドポイントです。WebSocket クライアントから接続してください。');
+      }
+    }
+
+    // Broadcast
+    if (segments[0] === 'broadcast') {
+      if (segments.length === 2 && segments[1] === 'stream' && method === 'GET') {
+        if (!isSseRequest(req)) return sendStreamHelp(res, '/v1/orchestrator/broadcast/stream');
+        sse.addClient('broadcast', req, res);
+        return;
+      }
+      if (segments.length === 2 && segments[1] === 'ws' && method === 'GET') {
+        return sendStreamHelp(res, '/v1/orchestrator/broadcast/ws', 'WebSocket エンドポイントです。WebSocket クライアントから接続してください。');
       }
     }
 
@@ -729,5 +893,5 @@ export function createApi(staticDir: string) {
     return res.end('Not Found');
   }
 
-  return { handle, sse, bus, inputBuffer, outputBuffer, engine };
+  return { handle, sse, ws, bus, inputBuffer, outputBuffer, engine };
 }

@@ -101,7 +101,7 @@
   let selectedLogicId = null;
 
   async function refreshTables(){
-    const [inputDefs, ins, outs, wfs] = await Promise.all([
+    const [inputDefs, ins, outputs, wfs] = await Promise.all([
       fetch(apiBase + '/inputs').then(r=>r.json()),
       fetch(apiBase + '/input-events').then(r=>r.json()),
       fetch(apiBase + '/outputs').then(r=>r.json()),
@@ -109,7 +109,7 @@
     ]);
     renderInputDefs(inputDefs.data);
     renderEvents(inputsTbody, ins.data);
-    renderEvents(outputsTbody, outs.data);
+    renderOutputs(outputsTbody, outputs.data || []);
     renderWfs(wfs.data);
     refreshLogics();
   }
@@ -145,6 +145,21 @@
       tr.append(td(ev.topic||''));
       tr.append(td(ev.type||''));
       tr.append(td(JSON.stringify(ev.payload)));
+      tbody.prepend(tr);
+    });
+  }
+
+  function renderOutputs(tbody, rows){
+    tbody.innerHTML='';
+    rows.forEach(def => {
+      const tr = document.createElement('tr');
+      tr.append(td(def.id));
+      tr.append(td(def.name || ''));
+      tr.append(td(def.type || ''));
+      tr.append(td(String(!!def.enabled)));
+      tr.append(td(def.config?.channel || ''));
+      tr.append(td(def.config?.path || ''));
+      tr.append(td(String(!!def.builtin)));
       tbody.prepend(tr);
     });
   }

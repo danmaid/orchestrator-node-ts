@@ -50,7 +50,22 @@ export interface InputDefinition {
   config: InputConfig;
 }
 
-export type ChannelName = 'inputs' | 'outputs' | 'workflows' | 'events';
+export type ChannelName = 'inputs' | 'outputs' | 'workflows' | 'events' | 'broadcast';
+
+export type OutputType = 'sse' | 'ws';
+
+export interface OutputDefinition {
+  id: string;
+  name: string;
+  type: OutputType;
+  enabled: boolean;
+  description?: string;
+  config?: {
+    path?: string;
+    channel?: ChannelName;
+  };
+  builtin?: boolean;
+}
 
 export type LogicType = 'builtin' | 'embedded' | 'webhook';
 
@@ -108,7 +123,8 @@ export type StepDefinition =
   | { type: 'tapLog'; label?: string };
 
 export type WorkflowOutputDefinition =
-  | { type: 'topic'; topic?: string };
+  | { type: 'topic'; topic?: string }
+  | { type: 'broadcast'; channel?: ChannelName; eventName?: string; topic?: string };
 
 export interface WorkflowDefinition {
   id: string;

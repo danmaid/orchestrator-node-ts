@@ -2,9 +2,10 @@
 import http from 'http';
 import path from 'path';
 import { createApi } from './api';
+import { isChannelName } from './ws';
 
 const staticDir = path.join(__dirname, '..', 'public');
-const { handle } = createApi(staticDir);
+const { handle, ws } = createApi(staticDir);
 
 const PORT = process.env.PORT || 3000;
 
@@ -26,6 +27,30 @@ const server = http.createServer(async (req, res) => {
     const method = req.method || '-';
     const url = req.url || '-';
     console.log(`${method} ${url} ${res.statusCode} ${ms}ms`);
+  }
+});
+
+server.on('upgrade', (req, socket, head) => {
+  try {
+    const host = req.headers.host || 'localhost';
+    const url = new URL(req.url || '/', `http://${host}`);
+    const basePath = '/v1/orchestrator';
+    if (!url.pathname.startsWith(basePath)) {
+      socket.destroy();
+      return;
+    }
+    const segments = url.pathname.slice(basePath.length).split('/').filter(Boolean);
+      if (segments.length === 2) {
+        const channel = segments[0];
+        const endpoint = segments[1];
+        if (isChannelName(channel) && (endpoint === 'ws' || endpoint === 'stream')) {
+          ws.handleUpgrade(req, socket, head, channel);
+          return;
+        }
+      }
+    socket.destroy();
+  } catch (err) {
+    socket.destroy();
   }
 });
 
