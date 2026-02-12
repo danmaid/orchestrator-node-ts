@@ -102,11 +102,7 @@ export class WorkflowEngine {
           ...baseOut,
           topic: outDef.topic || baseOut.topic
         };
-        if (outDef.type === 'loopback') {
-          this.onLoopback({ ...next, type: next.type || 'loopback' });
-        } else {
-          this.onOutput(next);
-        }
+        this.onOutput(next);
       });
     });
 
@@ -200,6 +196,18 @@ export class WorkflowEngine {
           })
         );
       }
+      case 'output': {
+        const outTopic = step.topic || (step.target ? `output/${step.target}` : 'output');
+        return stream$.pipe(tap(ev => {
+          const baseOut: OrchestratorEvent = {
+            ...ev,
+            type: ev.type || 'workflow_output',
+            topic: outTopic,
+            meta: { ...(ev.meta || {}), workflowId: def.id }
+          };
+          this.onOutput(baseOut);
+        }));
+      }
       case 'enrich': {
         return this.applyLogicStep(stream$, {
           logicId: step.sourceId,
@@ -209,10 +217,10 @@ export class WorkflowEngine {
           onError: step.onError,
           cacheTtlMs: step.cacheTtlMs,
           concurrency: step.concurrency
-        });
+        }, def);
       }
       case 'logic': {
-        return this.applyLogicStep(stream$, step);
+        return this.applyLogicStep(stream$, step, def);
       }
       case 'setTopic': {
         return stream$.pipe(map(ev => ({ ...ev, topic: step.topic })));
@@ -254,7 +262,24 @@ export class WorkflowEngine {
     }
   }
 
-  private applyLogicStep(stream$: Observable<OrchestratorEvent>, step: { logicId: string; params: Record<string, string>; targetField?: string; errorField?: string; onError?: 'skip' | 'pass' | 'setError'; cacheTtlMs?: number; concurrency?: number; }) {
+  private applyLogicStep(stream$: Observable<OrchestratorEvent>, step: { logicId: string; params: Record<string, string>; targetField?: string; errorField?: string; onError?: 'skip' | 'pass' | 'setError'; cacheTtlMs?: number; concurrency?: number; }, def: WorkflowDefinition) {
+    if (step.logicId === 'loopback') {
+      return stream$.pipe(tap(ev => {
+        const inEv: OrchestratorEvent = {
+          ...ev,
+          topic: 'input/loopback',
+          meta: {
+            ...(ev.meta || {}),
+            loopback: true,
+            loopbackFromTopic: ev.topic,
+            loopbackFromWorkflow: def.id,
+            inputId: 'loopback',
+            inputType: 'loopback'
+          }
+        };
+        this.onLoopback(inEv);
+      }));
+    }
     const targetField = step.targetField || `payload.logic.${step.logicId}`;
     const errorField = step.errorField || `payload.logicErrors.${step.logicId}`;
     const onError = step.onError || 'setError';
@@ -302,7 +327,6 @@ export class WorkflowEngine {
     if (Array.isArray(def.outputs) && def.outputs.length > 0) return def.outputs;
     const outputs: WorkflowOutputDefinition[] = [];
     outputs.push({ type: 'topic', topic: def.outputTopic });
-    if (def.loopbackToInput) outputs.push({ type: 'loopback', topic: def.outputTopic });
     return outputs;
   }
 }

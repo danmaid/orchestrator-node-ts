@@ -334,7 +334,7 @@ components:
       properties:
         id: { type: string }
         name: { type: string }
-        type: { type: string, enum: [webhook, udp, tail] }
+        type: { type: string, enum: [webhook, udp, tail, loopback] }
         enabled: { type: boolean }
         description: { type: string }
         workflowId: { type: string }
@@ -347,6 +347,7 @@ components:
             - $ref: '#/components/schemas/WebhookInputConfig'
             - $ref: '#/components/schemas/UdpInputConfig'
             - $ref: '#/components/schemas/TailInputConfig'
+            - { type: object }
     WebhookInputConfig:
       type: object
       properties:
@@ -387,6 +388,7 @@ components:
               - $ref: '#/components/schemas/StepThrottle'
               - $ref: '#/components/schemas/StepDelay'
               - $ref: '#/components/schemas/StepAggregateCount'
+              - $ref: '#/components/schemas/StepOutput'
               - $ref: '#/components/schemas/StepBranch'
               - $ref: '#/components/schemas/StepEnrich'
               - $ref: '#/components/schemas/StepLogic'
@@ -396,6 +398,10 @@ components:
               - $ref: '#/components/schemas/StepTapLog'
         outputTopic: { type: string }
         loopbackToInput: { type: boolean }
+        outputs:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowOutputDefinition'
     LogicDefinition:
       type: object
       required: [name, type, enabled]
@@ -452,6 +458,12 @@ components:
         keyField: { type: string }
         outputTopic: { type: string }
         eventType: { type: string }
+    StepOutput:
+      type: object
+      properties:
+        type: { const: output }
+        target: { type: string, description: output/<target> へ送信。 }
+        topic: { type: string, description: 明示的な output topic。target より優先。 }
     StepBranch:
       type: object
       properties:
@@ -516,3 +528,8 @@ components:
       properties:
         type: { const: tapLog }
         label: { type: string }
+    WorkflowOutputDefinition:
+      type: object
+      properties:
+        type: { type: string, enum: [topic] }
+        topic: { type: string }

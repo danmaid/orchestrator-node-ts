@@ -19,6 +19,19 @@ export function createApi(staticDir: string) {
 
   const bus = new EventBus();
   const inputStore = new Map<string, InputDefinition>();
+  const LOOPBACK_INPUT_ID = 'loopback';
+
+  const loopbackInput: InputDefinition = {
+    id: LOOPBACK_INPUT_ID,
+    name: 'loopback',
+    type: 'loopback',
+    enabled: true,
+    description: 'built-in loopback input',
+    topic: 'input/loopback',
+    source: 'input:loopback',
+    config: {}
+  };
+  inputStore.set(LOOPBACK_INPUT_ID, loopbackInput);
   const inputManager = new InputManager((ev) => {
     inputBuffer.push(ev);
     bus.publishInput(ev);
@@ -29,15 +42,54 @@ export function createApi(staticDir: string) {
   const enrichment = createDefaultEnrichmentService();
 
   const logicStore = new Map<string, LogicDefinition>();
-  for (const p of enrichment.listProviders()) {
-    logicStore.set(p.id, {
+
+  function buildBuiltinLogicDefinition(p: { id: string; ttlMs?: number; refreshIntervalMs?: number; hasRefresh?: boolean }) {
+    return {
       id: p.id,
       name: p.id,
       type: 'builtin',
       enabled: true,
-      description: 'built-in provider'
-    });
+      description: 'built-in provider',
+      config: {
+        ttlMs: p.ttlMs,
+        refreshIntervalMs: p.refreshIntervalMs,
+        refreshable: !!p.hasRefresh
+      }
+    } as LogicDefinition;
   }
+
+  function syncBuiltinLogics() {
+    const providers = enrichment.listProviders();
+    const providerIds = new Set(providers.map((p) => p.id));
+    const builtinIds = new Set<string>([...providerIds, 'loopback']);
+
+    for (const p of providers) {
+      const existing = logicStore.get(p.id);
+      if (!existing || existing.type === 'builtin') {
+        logicStore.set(p.id, buildBuiltinLogicDefinition(p));
+      }
+    }
+
+    const loopbackLogic: LogicDefinition = {
+      id: 'loopback',
+      name: 'loopback',
+      type: 'builtin',
+      enabled: true,
+      description: 'built-in loopback logic',
+      config: { target: 'input/loopback' }
+    };
+    const existingLoopback = logicStore.get('loopback');
+    if (!existingLoopback || existingLoopback.type === 'builtin') {
+      logicStore.set('loopback', loopbackLogic);
+    }
+
+    for (const [id, def] of logicStore.entries()) {
+      if (def.type !== 'builtin') continue;
+      if (!builtinIds.has(id)) logicStore.delete(id);
+    }
+  }
+
+  syncBuiltinLogics();
 
   const engine = new WorkflowEngine(
     bus,
@@ -47,7 +99,7 @@ export function createApi(staticDir: string) {
       sse.publish('outputs', { kind: 'output', data: ev });
       sse.publish('events', { kind: 'output', data: ev });
     },
-    (ev) => { // onLoopback
+    (ev) => { // onLoopback (input only)
       inputBuffer.push(ev);
       bus.publishInput(ev);
       sse.publish('inputs', { kind: 'input', data: ev });
@@ -289,6 +341,14 @@ export function createApi(staticDir: string) {
     const segments = subPath.split('/').filter(Boolean);
     const method = req.method || 'GET';
 
+    const accept = (req.headers['accept'] || '').toString();
+    const wantsHtml = (method === 'GET' || method === 'HEAD') && accept.includes('text/html');
+    const isAsset = path.extname(subPath) !== '';
+    if (wantsHtml && !isAsset) {
+      const served = await serveStatic(res, '/', method);
+      if (served) return;
+    }
+
     const webhook = inputManager.matchWebhook(subPath, method);
     if (webhook) {
       const def = inputStore.get(webhook.inputId);
@@ -328,6 +388,9 @@ export function createApi(staticDir: string) {
       if (segments.length === 1 && method === 'POST') {
         try {
           const body = await readJsonBody(req);
+          if (body?.id === LOOPBACK_INPUT_ID || body?.type === 'loopback') {
+            return sendJson(res, 400, { error: 'builtin_input_is_readonly' });
+          }
           const def = buildInputDefinition(body);
           if (inputStore.has(def.id)) return sendJson(res, 409, { error: 'id_already_exists' });
           inputStore.set(def.id, def);
@@ -349,9 +412,11 @@ export function createApi(staticDir: string) {
       }
       if (segments.length === 2 && method === 'PUT') {
         const id = segments[1];
+        if (id === LOOPBACK_INPUT_ID) return sendJson(res, 400, { error: 'builtin_input_is_readonly' });
         if (!inputStore.has(id)) return sendJson(res, 404, { error: 'not found' });
         try {
           const body = await readJsonBody(req);
+          if (body?.type === 'loopback') return sendJson(res, 400, { error: 'builtin_input_is_readonly' });
           const def = buildInputDefinition(body, id);
           inputStore.set(id, def);
           inputManager.upsert(def);
@@ -367,10 +432,12 @@ export function createApi(staticDir: string) {
       }
       if (segments.length === 2 && method === 'PATCH') {
         const id = segments[1];
+        if (id === LOOPBACK_INPUT_ID) return sendJson(res, 400, { error: 'builtin_input_is_readonly' });
         const old = inputStore.get(id);
         if (!old) return sendJson(res, 404, { error: 'not found' });
         try {
           const body = await readJsonBody(req);
+          if (body?.type === 'loopback') return sendJson(res, 400, { error: 'builtin_input_is_readonly' });
           const merged = { ...old, ...body };
           const def = buildInputDefinition(merged, id);
           inputStore.set(id, def);
@@ -387,6 +454,7 @@ export function createApi(staticDir: string) {
       }
       if (segments.length === 2 && method === 'DELETE') {
         const id = segments[1];
+        if (id === LOOPBACK_INPUT_ID) return sendJson(res, 400, { error: 'builtin_input_is_readonly' });
         if (!inputStore.has(id)) return sendJson(res, 404, { error: 'not found' });
         inputStore.delete(id);
         inputManager.remove(id);
@@ -395,6 +463,7 @@ export function createApi(staticDir: string) {
       }
       if (segments.length === 3 && method === 'POST' && segments[2] === 'enable') {
         const id = segments[1];
+        if (id === LOOPBACK_INPUT_ID) return sendJson(res, 400, { error: 'builtin_input_is_readonly' });
         const def = inputStore.get(id);
         if (!def) return sendJson(res, 404, { error: 'not found' });
         def.enabled = true;
@@ -404,6 +473,7 @@ export function createApi(staticDir: string) {
       }
       if (segments.length === 3 && method === 'POST' && segments[2] === 'disable') {
         const id = segments[1];
+        if (id === LOOPBACK_INPUT_ID) return sendJson(res, 400, { error: 'builtin_input_is_readonly' });
         const def = inputStore.get(id);
         if (!def) return sendJson(res, 404, { error: 'not found' });
         def.enabled = false;
@@ -575,6 +645,7 @@ export function createApi(staticDir: string) {
     // Logics (unified enrichment + built-in)
     if (segments[0] === 'logics') {
       if (segments.length === 1 && method === 'GET') {
+        syncBuiltinLogics();
         return sendJson(res, 200, { data: Array.from(logicStore.values()) });
       }
       if (segments.length === 1 && method === 'POST') {
@@ -582,6 +653,8 @@ export function createApi(staticDir: string) {
           const body = await readJsonBody(req);
           const def = buildLogicDefinition(body);
           if (def.type !== 'webhook') return sendJson(res, 400, { error: 'only_webhook_type_is_creatable' });
+          if (def.id === 'loopback') return sendJson(res, 409, { error: 'builtin_logic_id_conflict' });
+          if (enrichment.getProvider(def.id)) return sendJson(res, 409, { error: 'builtin_logic_id_conflict' });
           if (logicStore.has(def.id)) return sendJson(res, 409, { error: 'id_already_exists' });
           logicStore.set(def.id, def);
           applyLogicDefinition(def);
@@ -594,6 +667,7 @@ export function createApi(staticDir: string) {
         }
       }
       if (segments.length === 2 && method === 'GET') {
+        syncBuiltinLogics();
         const def = logicStore.get(segments[1]);
         if (!def) return sendJson(res, 404, { error: 'not found' });
         return sendJson(res, 200, def);

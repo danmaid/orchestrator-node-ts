@@ -9,7 +9,7 @@ export interface OrchestratorEvent {
   meta?: Record<string, any>;
 }
 
-export type InputType = 'webhook' | 'udp' | 'tail';
+export type InputType = 'webhook' | 'udp' | 'tail' | 'loopback';
 
 export type InputMode = 'raw' | 'aggregate';
 
@@ -32,7 +32,9 @@ export interface TailInputConfig {
   pollIntervalMs?: number;
 }
 
-export type InputConfig = WebhookInputConfig | UdpInputConfig | TailInputConfig;
+export interface LoopbackInputConfig {}
+
+export type InputConfig = WebhookInputConfig | UdpInputConfig | TailInputConfig | LoopbackInputConfig;
 
 export interface InputDefinition {
   id: string;
@@ -78,6 +80,7 @@ export type StepDefinition =
   | { type: 'throttle'; ms: number }
   | { type: 'delay'; ms: number }
   | { type: 'aggregateCount'; windowMs: number; keyField?: string; outputTopic?: string; eventType?: string }
+  | { type: 'output'; target?: string; topic?: string }
   | { type: 'branch'; branches: { when: { field: string; equals: any }, set?: Record<string, any>, outputTopic?: string }[], else?: { set?: Record<string, any>, outputTopic?: string } }
   | {
       type: 'enrich';
@@ -105,8 +108,7 @@ export type StepDefinition =
   | { type: 'tapLog'; label?: string };
 
 export type WorkflowOutputDefinition =
-  | { type: 'topic'; topic?: string }
-  | { type: 'loopback'; topic?: string };
+  | { type: 'topic'; topic?: string };
 
 export interface WorkflowDefinition {
   id: string;

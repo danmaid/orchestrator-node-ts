@@ -9,15 +9,14 @@
 </head>
 <body>
   <header>
-    <h1>Orchestrator Demo UI</h1>
+    <h1><a href="/v1/orchestrator/" data-route-link="overview">Orchestrator Demo UI</a></h1>
     <nav>
-      <a href="#input-defs">Input Definitions</a>
-      <a href="#input-events">Input Events</a>
-      <a href="#outputs">Outputs</a>
-      <a href="#workflows">Workflows</a>
-      <a href="#logics">Logics</a>
-      <a href="#samples">Samples</a>
-      <a href="#enrichment">Enrichment</a>
+      <a href="/v1/orchestrator/" data-route-link="overview">Overview</a>
+      <a href="/v1/orchestrator/inputs" data-route-link="inputs">Inputs</a>
+      <a href="/v1/orchestrator/workflows" data-route-link="workflows">Workflows</a>
+      <a href="/v1/orchestrator/outputs" data-route-link="outputs">Outputs</a>
+      <a href="/v1/orchestrator/logics" data-route-link="logics">Logics & Enrichment</a>
+      <a href="/v1/orchestrator/workflows#samples" data-route-link="samples">Samples</a>
       <a href="/v1/orchestrator/graph.html" target="_blank">Graph Demo</a>
       <a href="/v1/orchestrator/openapi.yaml" target="_blank">OpenAPI</a>
     </nav>
@@ -25,19 +24,19 @@
 
   <main class="dashboard" style="--row1: 66.6667%; --col1: 25%; --col3: 25%; --bottomCol1: 50%;">
     <aside class="sidebar" aria-label="Sections">
-      <a class="sidebar-item" href="#input-defs" title="Input"><span aria-hidden="true">📥</span></a>
-      <a class="sidebar-item" href="#workflows" title="Workflow"><span aria-hidden="true">🧩</span></a>
-      <a class="sidebar-item" href="#outputs" title="Output"><span aria-hidden="true">📤</span></a>
-      <a class="sidebar-item" href="#logics" title="Logics"><span aria-hidden="true">🧠</span></a>
+      <a class="sidebar-item" href="/v1/orchestrator/inputs" title="Input" data-route-link="inputs"><span aria-hidden="true">📥</span></a>
+      <a class="sidebar-item" href="/v1/orchestrator/workflows" title="Workflow" data-route-link="workflows"><span aria-hidden="true">🧩</span></a>
+      <a class="sidebar-item" href="/v1/orchestrator/outputs" title="Output" data-route-link="outputs"><span aria-hidden="true">📤</span></a>
+      <a class="sidebar-item" href="/v1/orchestrator/logics" title="Logics" data-route-link="logics"><span aria-hidden="true">🧠</span></a>
     </aside>
-    <section class="panel panel-input">
+    <section class="panel panel-input" data-route="inputs">
       <div class="panel-header">
-        <h2 class="panel-title"><span class="panel-icon" aria-hidden="true">📥</span>input</h2>
+        <h2 class="panel-title"><span class="panel-icon" aria-hidden="true">📥</span><a href="/v1/orchestrator/inputs" data-route-link="inputs">input</a></h2>
       </div>
       <div class="panel-body">
         <section id="input-defs" class="panel-section">
           <h3>Input Definitions</h3>
-          <form id="inputDefForm">
+          <form id="inputDefForm" data-detail-only>
             <label>name <input name="name" value="webhook-orders" required></label>
             <label>type
               <select name="type">
@@ -73,7 +72,7 @@
 
         <section id="input-events" class="panel-section">
           <h3>Input Events</h3>
-          <form id="inputForm">
+          <form id="inputForm" data-detail-only>
             <label>source <input name="source" value="demo-ui" required></label>
             <label>topic <input name="topic" value="demo/topic" required></label>
             <label>type <input name="type" value="demo"></label>
@@ -90,12 +89,12 @@
       </div>
     </section>
 
-    <section class="panel panel-workflow" id="workflows">
+    <section class="panel panel-workflow" id="workflows" data-route="workflows">
       <div class="panel-header">
-        <h2 class="panel-title"><span class="panel-icon" aria-hidden="true">🧩</span>workflow</h2>
+        <h2 class="panel-title"><span class="panel-icon" aria-hidden="true">🧩</span><a href="/v1/orchestrator/workflows" data-route-link="workflows">workflow</a></h2>
       </div>
       <div class="panel-body">
-        <form id="wfForm">
+        <form id="wfForm" data-detail-only>
           <label>name <input name="name" value="wf-demo" required></label>
           <label>enabled <input type="checkbox" name="enabled" checked></label>
           <label>sourceTopics (comma) <input name="sourceTopics" value="demo/topic"></label>
@@ -126,11 +125,11 @@
           </table>
         </div>
 
-        <div class="card detail" id="wfDetail">
+        <div class="card detail" id="wfDetail" data-detail-only>
           <div class="muted">ワークフローをクリックすると詳細が表示されます。</div>
         </div>
 
-        <details>
+        <details data-detail-only>
           <summary>ロジックの説明</summary>
           <ul>
             <li><b>filterEquals</b>: 指定フィールドが値と一致するイベントのみ通過</li>
@@ -139,6 +138,7 @@
             <li><b>throttle</b>: 高頻度入力を一定間隔で間引き (ms)</li>
             <li><b>delay</b>: 出力を遅延 (ms)</li>
             <li><b>aggregateCount</b>: 一定時間窓で件数を集計 (windowMs, keyField)</li>
+            <li><b>output</b>: 指定 output へイベントをそのまま送出 (target または topic)</li>
             <li><b>logic</b>: 統合ロジック。built-in/embedded/webhook を実行し、結果を payload に補完</li>
             <li><b>enrich</b>: 外部データ取得 + キャッシュを行い、結果を payload に補完</li>
             <li><b>setTopic</b>: イベントの topic を差し替え</li>
@@ -149,7 +149,7 @@
           </ul>
         </details>
 
-        <details id="samples">
+        <details id="samples" data-detail-only>
           <summary>Samples</summary>
           <div class="grid">
             <div class="card">
@@ -200,9 +200,9 @@
       </div>
     </section>
 
-    <section class="panel panel-output" id="outputs">
+    <section class="panel panel-output" id="outputs" data-route="outputs">
       <div class="panel-header">
-        <h2 class="panel-title"><span class="panel-icon" aria-hidden="true">📤</span>output</h2>
+        <h2 class="panel-title"><span class="panel-icon" aria-hidden="true">📤</span><a href="/v1/orchestrator/outputs" data-route-link="outputs">output</a></h2>
       </div>
       <div class="panel-body">
         <div class="table-wrap">
@@ -215,14 +215,14 @@
     </section>
 
     <div class="panel-row panel-row-bottom">
-      <section class="panel panel-logics" id="logics">
+      <section class="panel panel-logics" id="logics" data-route="logics">
         <div class="panel-header">
-          <h2 class="panel-title"><span class="panel-icon" aria-hidden="true">🧠</span>logics</h2>
+          <h2 class="panel-title"><span class="panel-icon" aria-hidden="true">🧠</span><a href="/v1/orchestrator/logics" data-route-link="logics">logics</a></h2>
         </div>
         <div class="panel-body">
           <p class="muted">built-in / embedded は読み取り専用、追加できるのは webhook タイプのみです。</p>
 
-          <form id="logicForm">
+          <form id="logicForm" data-detail-only>
             <label>name <input name="name" value="logic-webhook-demo" required></label>
             <label>type
               <select name="type">
@@ -253,16 +253,23 @@
         </div>
       </section>
 
-      <section class="panel panel-builtins" id="enrichment">
+      <section class="panel panel-builtins" id="logic-detail" data-route="logics">
         <div class="panel-header">
-          <h2 class="panel-title">(built-in)</h2>
+          <h2 class="panel-title">logic detail</h2>
         </div>
         <div class="panel-body">
+          <div id="logicDetail" class="detail">
+            <div class="muted">ロジックの行をクリックすると詳細を表示します。</div>
+          </div>
+
+          <div data-detail-only>
+            <h3>Enrichment</h3>
           <p>
             <b>logic</b> ステップは、イベント内の値をパラメータにして内蔵ロジック / webhook を実行し、
             結果を payload に書き込みます。キャッシュがあるため毎回のリクエストは避けられます。
             既存の <b>enrich</b> ステップも互換として利用できます。
           </p>
+          <p class="muted">特別な built-in の <b>loopback</b> ロジックを使うと、イベントを input/loopback へ明示的に再投入できます。</p>
 
           <div class="toolbar">
             <button id="enrichReload">補完ソースを再読み込み</button>
@@ -336,6 +343,7 @@
               <p>追加の補完ソースは <code>src/enrichment.ts</code> にハードコードで定義可能です。</p>
             </details>
           </details>
+          </div>
         </div>
       </section>
       <div class="resizer resizer-col resizer-bottom" aria-hidden="true"></div>

@@ -1,12 +1,92 @@
 
 (function(){
   const apiBase = '/v1/orchestrator';
+  const uiBase = '/v1/orchestrator';
 
   // Helpers
   const qs = (sel, el=document) => el.querySelector(sel);
   const qsa = (sel, el=document) => Array.from(el.querySelectorAll(sel));
   const fmt = (o) => typeof o === 'string' ? o : JSON.stringify(o);
   const td = (text) => { const d = document.createElement('td'); d.textContent = text; return d; };
+
+  const routePanels = Array.from(document.querySelectorAll('[data-route]'));
+  const detailOnlyElems = Array.from(document.querySelectorAll('[data-detail-only]'));
+  const panelRowBottom = document.querySelector('.panel-row-bottom');
+  const routeLinks = Array.from(document.querySelectorAll('[data-route-link]'));
+
+  function getRouteFromPath(pathname){
+    if (!pathname.startsWith(uiBase)) return 'external';
+    const rel = pathname.slice(uiBase.length) || '/';
+    const seg = rel.split('/').filter(Boolean)[0] || '';
+    if (!seg) return 'overview';
+    const route = seg.toLowerCase();
+    if (route === 'enrichments') return 'logics';
+    if (['inputs','outputs','workflows','logics'].includes(route)) return route;
+    return 'overview';
+  }
+
+  function setActiveLinks(route){
+    const hash = location.hash;
+    routeLinks.forEach((link)=>{
+      const key = link.getAttribute('data-route-link') || '';
+      const isSample = key === 'samples' && route === 'workflows' && hash === '#samples';
+      const isActive = isSample || (route === 'overview'
+        ? key === 'overview'
+        : key === route);
+      link.classList.toggle('is-active', isActive);
+    });
+  }
+
+  function applyRoute(route){
+    const isOverview = route === 'overview';
+    document.body.dataset.view = isOverview ? 'full' : 'single';
+    document.body.dataset.route = route;
+    routePanels.forEach((panel)=>{
+      const panelRoute = panel.getAttribute('data-route');
+      const shouldShow = isOverview || panelRoute === route;
+      panel.classList.toggle('is-hidden', !shouldShow);
+    });
+    detailOnlyElems.forEach((el)=>{
+      el.classList.toggle('is-hidden', isOverview);
+    });
+    if (panelRowBottom) {
+      const showBottom = isOverview || route === 'logics';
+      panelRowBottom.classList.toggle('is-hidden', !showBottom);
+    }
+    setActiveLinks(route);
+    const main = document.querySelector('main');
+    if (main && !isOverview) main.scrollTop = 0;
+  }
+
+  function navigateTo(url, replace){
+    const route = getRouteFromPath(url.pathname);
+    if (route === 'external') return false;
+    const target = url.pathname + url.search + url.hash;
+    if (replace) history.replaceState({}, '', target);
+    else history.pushState({}, '', target);
+    applyRoute(route);
+    if (url.hash) {
+      const el = document.querySelector(url.hash);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    return true;
+  }
+
+  document.addEventListener('click', (ev)=>{
+    const link = ev.target && ev.target.closest ? ev.target.closest('a') : null;
+    if (!link) return;
+    if (link.target && link.target !== '_self') return;
+    const href = link.getAttribute('href');
+    if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:')) return;
+    const url = new URL(href, location.origin);
+    if (url.origin !== location.origin) return;
+    const handled = navigateTo(url, false);
+    if (handled) ev.preventDefault();
+  });
+
+  window.addEventListener('popstate', ()=>{
+    applyRoute(getRouteFromPath(location.pathname));
+  });
 
   // Inputs table & form
   const inputsTbody = qs('#inputsTable tbody');
@@ -17,6 +97,8 @@
   const enrichTbody = qs('#enrichTable tbody');
   const enrichCacheSize = qs('#enrichCacheSize');
   const logicTbody = qs('#logicTable tbody');
+  const logicDetail = qs('#logicDetail');
+  let selectedLogicId = null;
 
   async function refreshTables(){
     const [inputDefs, ins, outs, wfs] = await Promise.all([
@@ -80,20 +162,27 @@
       tr.append(td(def.topic || ''));
       tr.append(td(def.source || ''));
       const actions = document.createElement('td');
-      const btnE = document.createElement('button');
-      btnE.textContent = def.enabled ? 'Disable' : 'Enable';
-      btnE.onclick = async ()=>{
-        await fetch(apiBase + `/inputs/${def.id}/${def.enabled ? 'disable':'enable'}`, {method:'POST'});
-        refreshTables();
-      };
-      const btnD = document.createElement('button');
-      btnD.textContent = 'Delete';
-      btnD.style.marginLeft = '6px';
-      btnD.onclick = async ()=>{
-        await fetch(apiBase + `/inputs/${def.id}`, {method:'DELETE'});
-        refreshTables();
-      };
-      actions.append(btnE, btnD);
+      if (def.type === 'loopback') {
+        const span = document.createElement('span');
+        span.className = 'muted';
+        span.textContent = 'read-only';
+        actions.append(span);
+      } else {
+        const btnE = document.createElement('button');
+        btnE.textContent = def.enabled ? 'Disable' : 'Enable';
+        btnE.onclick = async ()=>{
+          await fetch(apiBase + `/inputs/${def.id}/${def.enabled ? 'disable':'enable'}`, {method:'POST'});
+          refreshTables();
+        };
+        const btnD = document.createElement('button');
+        btnD.textContent = 'Delete';
+        btnD.style.marginLeft = '6px';
+        btnD.onclick = async ()=>{
+          await fetch(apiBase + `/inputs/${def.id}`, {method:'DELETE'});
+          refreshTables();
+        };
+        actions.append(btnE, btnD);
+      }
       tr.append(actions);
       inputDefsTbody.prepend(tr);
     });
@@ -142,7 +231,7 @@
     const steps = Array.isArray(wf.steps) ? wf.steps : [];
     const outputs = Array.isArray(wf.outputs) && wf.outputs.length > 0
       ? wf.outputs
-      : [{ type: 'topic', topic: wf.outputTopic }, ...(wf.loopbackToInput ? [{ type: 'loopback', topic: wf.outputTopic }] : [])];
+      : [{ type: 'topic', topic: wf.outputTopic }];
     wfDetail.innerHTML = `
       <h4>${escapeHtml(wf.name || wf.id)}</h4>
       <div class="muted">id: ${escapeHtml(wf.id)}</div>
@@ -233,8 +322,34 @@
       }
 
       tr.append(actions);
+      tr.style.cursor = 'pointer';
+      tr.onclick = (ev)=>{
+        if (ev.target && ev.target.tagName === 'BUTTON') return;
+        selectedLogicId = def.id;
+        renderLogicDetail(def);
+      };
       logicTbody.prepend(tr);
     });
+
+    if (selectedLogicId) {
+      const selected = rows.find(r => r.id === selectedLogicId);
+      if (selected) renderLogicDetail(selected);
+    }
+  }
+
+  function renderLogicDetail(def){
+    if (!logicDetail) return;
+    if (!def) {
+      logicDetail.innerHTML = '<div class="muted">ロジックの行をクリックすると詳細を表示します。</div>';
+      return;
+    }
+    logicDetail.innerHTML = `
+      <h4>${escapeHtml(def.name || def.id)}</h4>
+      <div class="muted">id: ${escapeHtml(def.id)}</div>
+      <div class="muted">type: ${escapeHtml(def.type || '-')}, enabled: ${escapeHtml(String(!!def.enabled))}</div>
+      <div class="muted">description: ${escapeHtml(def.description || '-')}</div>
+      <div class="step"><div><b>config</b></div><div><code>${escapeHtml(JSON.stringify(def.config || {}, null, 2))}</code></div></div>
+    `;
   }
 
   qs('#inputForm').addEventListener('submit', async (e)=>{
@@ -365,6 +480,7 @@
       outputTopic: 'orders/processed',
       steps: [
         { type: 'logic', logicId: 'prefectures', params: { code: 'payload.prefCode' }, targetField: 'payload.enriched.pref' },
+        { type: 'logic', logicId: 'loopback', params: {} },
         { type: 'tapLog', label: 'orders' }
       ]
     },
@@ -567,6 +683,11 @@
     bottomResizer.addEventListener('pointerdown', startBottomDrag);
   }
 
+  applyRoute(getRouteFromPath(location.pathname));
+  if (location.hash) {
+    const el = document.querySelector(location.hash);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
   refreshTables();
   refreshEnrichments();
   refreshLogics();
