@@ -1,6 +1,7 @@
 
 import dgram from 'dgram';
 import fs from 'fs';
+import path from 'path';
 import { randomUUID } from 'crypto';
 import { OrchestratorEvent, InputDefinition, UdpInputConfig, TailInputConfig, TimerInputConfig, WebhookInputConfig } from './types';
 
@@ -114,6 +115,14 @@ export class InputManager {
 
   private startTail(def: InputDefinition): InputRuntime {
     const cfg = def.config as TailInputConfig;
+    if (cfg.dir) {
+      const follower = new MultiTailFollower(cfg, (payload, meta) => this.emitFromInput(def, payload, meta));
+      follower.start();
+      return {
+        status: 'running',
+        stop: () => follower.stop()
+      };
+    }
     const follower = new TailFollower(cfg, (payload, meta) => this.emitFromInput(def, payload, meta));
     follower.start();
     return {
@@ -192,74 +201,162 @@ export function normalizeWebhookPath(path: string) {
 }
 
 class TailFollower {
-  private timer?: NodeJS.Timeout;
-  private position = 0;
-  private remainder = '';
-  private reading = false;
-  private started = false;
+  private timer: NodeJS.Timeout | null = null;
+  private offset = 0;
+  private inode: number | null = null;
+  private buffer = '';
+  private stopped = false;
+  private looping = false;
+  private idleBackoffMs: number;
+  private watcher: fs.FSWatcher | null = null;
+  private fd: fs.promises.FileHandle | null = null;
 
-  constructor(private cfg: TailInputConfig, private onLine: (payload: any, meta: Record<string, any>) => void) {}
+  private readonly intervalMs: number;
+  private readonly maxBackoffMs: number;
+  private readonly startAtEnd: boolean;
+  private readonly dir: string;
+  private readonly base: string;
+
+  constructor(private cfg: TailInputConfig, private onLine: (payload: any, meta: Record<string, any>) => void) {
+    this.intervalMs = this.cfg.pollIntervalMs ?? 1000;
+    this.maxBackoffMs = this.cfg.maxBackoffMs ?? Math.max(this.intervalMs * 4, 2000);
+    this.startAtEnd = this.cfg.from === 'end' || this.cfg.from === undefined;
+    this.idleBackoffMs = this.intervalMs;
+    this.dir = path.dirname(this.cfg.path || '');
+    this.base = path.basename(this.cfg.path || '');
+  }
 
   start() {
-    if (this.started) return;
-    this.started = true;
-    this.initPosition().finally(() => {
-      const interval = this.cfg.pollIntervalMs ?? 1000;
-      this.timer = setInterval(() => this.tick(), interval);
+    if (!this.stopped && this.timer) return;
+    this.stopped = false;
+    this.openFile().finally(() => {
+      if (this.cfg.watch !== false) this.startWatcher();
+      this.loop();
     });
   }
 
   stop() {
-    if (this.timer) clearInterval(this.timer);
-    this.timer = undefined;
-    this.started = false;
+    this.stopped = true;
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+    this.stopWatcher();
+    this.closeFile();
   }
 
-  private async initPosition() {
+  private startWatcher() {
     try {
-      const stat = await fs.promises.stat(this.cfg.path);
-      if (this.cfg.from === 'end' || this.cfg.from === undefined) {
-        this.position = stat.size;
-      } else {
-        this.position = 0;
-      }
+      this.watcher = fs.watch(this.dir, (_eventType, filename) => {
+        if (filename && filename !== this.base) return;
+        this.poke();
+      });
+      this.watcher.on('error', () => this.poke(true));
     } catch (_) {
-      this.position = 0;
+      // ignore watcher failures
     }
   }
 
-  private async tick() {
-    if (this.reading) return;
-    this.reading = true;
+  private stopWatcher() {
     try {
-      const stat = await fs.promises.stat(this.cfg.path);
-      if (stat.size < this.position) {
-        this.position = stat.size;
-      }
-      if (stat.size === this.position) return;
+      this.watcher?.close();
+    } catch (_) {
+      // ignore
+    }
+    this.watcher = null;
+  }
 
-      const length = stat.size - this.position;
-      const fh = await fs.promises.open(this.cfg.path, 'r');
-      try {
-        const buffer = Buffer.alloc(length);
-        await fh.read(buffer, 0, length, this.position);
-        this.position = stat.size;
-        this.processChunk(buffer.toString('utf8'));
-      } finally {
-        await fh.close();
-      }
+  private poke(forceResync = false) {
+    if (forceResync) {
+      this.closeFile();
+      this.openFile();
+    }
+    this.idleBackoffMs = this.intervalMs;
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+    this.loop();
+  }
+
+  private async openFile() {
+    try {
+      if (this.fd) await this.closeFile();
+      if (!this.cfg.path) return;
+      const stat = await fs.promises.stat(this.cfg.path);
+      this.inode = stat.ino;
+      this.fd = await fs.promises.open(this.cfg.path, 'r');
+      this.offset = this.startAtEnd ? stat.size : 0;
     } catch (_) {
       // ignore missing file
-    } finally {
-      this.reading = false;
     }
   }
 
-  private processChunk(text: string) {
-    const full = this.remainder + text;
-    const lines = full.split(/\r?\n/);
-    this.remainder = lines.pop() ?? '';
-    for (const line of lines) {
+  private async closeFile() {
+    if (this.fd) {
+      try {
+        await this.fd.close();
+      } catch (_) {
+        // ignore
+      }
+      this.fd = null;
+    }
+  }
+
+  private async loop() {
+    if (this.stopped || this.looping) return;
+    this.looping = true;
+    let progressed = false;
+
+    try {
+      if (!this.cfg.path) return;
+      const stat = await fs.promises.stat(this.cfg.path);
+
+      if (this.inode != null && stat.ino !== this.inode) {
+        await this.closeFile();
+        this.inode = stat.ino;
+        await this.openFile();
+      }
+
+      if (!this.fd) {
+        // file not open yet
+      } else if (stat.size < this.offset) {
+        this.offset = 0;
+        this.buffer = '';
+      } else if (stat.size > this.offset) {
+        const toRead = stat.size - this.offset;
+        const chunk = Buffer.allocUnsafe(Math.min(toRead, 64 * 1024));
+        let readTotal = 0;
+
+        while (readTotal < toRead) {
+          const len = Math.min(chunk.length, toRead - readTotal);
+          const { bytesRead } = await this.fd.read(chunk, 0, len, this.offset + readTotal);
+          if (bytesRead === 0) break;
+          readTotal += bytesRead;
+          this.onBytes(chunk.subarray(0, bytesRead));
+        }
+
+        this.offset += readTotal;
+        progressed = readTotal > 0;
+      }
+    } catch (_) {
+      await this.closeFile();
+      await this.openFile();
+    } finally {
+      this.looping = false;
+      if (!this.stopped) {
+        this.idleBackoffMs = progressed ? this.intervalMs : Math.min(this.idleBackoffMs * 2, this.maxBackoffMs);
+        this.timer = setTimeout(() => this.loop(), this.idleBackoffMs);
+      }
+    }
+  }
+
+  private onBytes(bytes: Buffer) {
+    this.buffer += bytes.toString('utf8');
+    let idx: number;
+    while ((idx = this.buffer.indexOf('\n')) !== -1) {
+      const line = this.buffer.slice(0, idx).replace(/\r$/, '');
+      this.buffer = this.buffer.slice(idx + 1);
       if (!line) continue;
       const payload = this.parseLine(line);
       this.onLine(payload, { path: this.cfg.path });
@@ -276,4 +373,143 @@ class TailFollower {
     }
     return line;
   }
+}
+
+class MultiTailFollower {
+  private readonly dir: string;
+  private readonly patterns: RegExp[];
+  private readonly ignore: RegExp[];
+  private readonly scanIntervalMs: number;
+  private readonly scanDebounceMs: number;
+  private tailers = new Map<string, TailFollower>();
+  private watcher: fs.FSWatcher | null = null;
+  private scanTimer: NodeJS.Timeout | null = null;
+  private scanLoopTimer: NodeJS.Timeout | null = null;
+  private scanning = false;
+  private stopped = false;
+
+  constructor(private cfg: TailInputConfig, private onLine: (payload: any, meta: Record<string, any>) => void) {
+    this.dir = cfg.dir || '';
+    this.patterns = buildRegexList(cfg.patterns, [
+      '^(problems|history)-.*\\.ndjson$',
+      '^problems-.*-(main-process|task-manager)-\\d+\\.ndjson$',
+      '^history-.*-(main-process|task-manager)-\\d+\\.ndjson$'
+    ]);
+    this.ignore = buildRegexList(cfg.ignorePatterns, [/\.old$/]);
+    this.scanIntervalMs = cfg.scanIntervalMs ?? Math.max(cfg.pollIntervalMs ?? 1000, 500);
+    this.scanDebounceMs = cfg.scanDebounceMs ?? 150;
+  }
+
+  start() {
+    if (this.stopped === false && (this.watcher || this.scanLoopTimer)) return;
+    this.stopped = false;
+    this.scanNow();
+    if (this.cfg.watch !== false) {
+      this.startWatcher();
+    } else {
+      this.startScanLoop();
+    }
+  }
+
+  stop() {
+    this.stopped = true;
+    this.stopWatcher();
+    if (this.scanTimer) {
+      clearTimeout(this.scanTimer);
+      this.scanTimer = null;
+    }
+    if (this.scanLoopTimer) {
+      clearInterval(this.scanLoopTimer);
+      this.scanLoopTimer = null;
+    }
+    for (const [, t] of this.tailers) {
+      try {
+        t.stop();
+      } catch (_) {
+        // ignore
+      }
+    }
+    this.tailers.clear();
+  }
+
+  private startWatcher() {
+    try {
+      this.watcher = fs.watch(this.dir, () => this.debouncedScan());
+      this.watcher.on('error', () => this.debouncedScan());
+    } catch (_) {
+      // ignore watcher failures
+      this.startScanLoop();
+    }
+  }
+
+  private stopWatcher() {
+    try {
+      this.watcher?.close();
+    } catch (_) {
+      // ignore
+    }
+    this.watcher = null;
+  }
+
+  private startScanLoop() {
+    if (this.scanLoopTimer) return;
+    this.scanLoopTimer = setInterval(() => this.scanNow(), this.scanIntervalMs);
+  }
+
+  private debouncedScan() {
+    if (this.stopped) return;
+    if (this.scanTimer) clearTimeout(this.scanTimer);
+    this.scanTimer = setTimeout(() => {
+      if (!this.stopped) this.scanNow();
+    }, this.scanDebounceMs);
+  }
+
+  private async scanNow() {
+    if (this.stopped || this.scanning) return;
+    this.scanning = true;
+    try {
+      const entries = await fs.promises.readdir(this.dir);
+      const want = new Set(
+        entries
+          .filter((n) => this.patterns.length === 0 || this.patterns.some((p) => p.test(n)))
+          .filter((n) => !this.ignore.some((p) => p.test(n)))
+          .map((n) => path.join(this.dir, n))
+      );
+
+      for (const abs of want) {
+        if (this.stopped) break;
+        if (this.tailers.has(abs)) continue;
+        const fileCfg: TailInputConfig = { ...this.cfg, path: abs, dir: undefined };
+        const t = new TailFollower(fileCfg, (payload, meta) =>
+          this.onLine(payload, { ...meta, dir: this.dir, file: path.basename(abs) })
+        );
+        this.tailers.set(abs, t);
+        t.start();
+      }
+
+      for (const [abs, t] of this.tailers) {
+        if (!want.has(abs)) {
+          t.stop();
+          this.tailers.delete(abs);
+        }
+      }
+    } catch (_) {
+      // ignore scan errors
+    } finally {
+      this.scanning = false;
+    }
+  }
+}
+
+function buildRegexList(values: string[] | undefined, fallback: Array<string | RegExp>): RegExp[] {
+  const source = values && values.length > 0 ? values : fallback;
+  const list: RegExp[] = [];
+  for (const v of source) {
+    try {
+      list.push(v instanceof RegExp ? v : new RegExp(v));
+    } catch (_) {
+      // ignore invalid regex
+    }
+  }
+  return list;
 }

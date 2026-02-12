@@ -26,10 +26,17 @@ export interface UdpInputConfig {
 }
 
 export interface TailInputConfig {
-  path: string;
+  path?: string;
+  dir?: string;
+  patterns?: string[];
+  ignorePatterns?: string[];
   from?: 'start' | 'end';
   codec?: 'utf8' | 'json';
   pollIntervalMs?: number;
+  maxBackoffMs?: number;
+  watch?: boolean;
+  scanIntervalMs?: number;
+  scanDebounceMs?: number;
 }
 
 export interface TimerInputConfig {

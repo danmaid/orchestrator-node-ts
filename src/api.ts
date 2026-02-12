@@ -367,7 +367,8 @@ export function createApi(staticDir: string) {
       if (!def.config || typeof (def.config as any).port !== 'number') throw new Error('udp_port_required');
     }
     if (def.type === 'tail') {
-      if (!def.config || !(def.config as any).path) throw new Error('tail_path_required');
+      const cfg = def.config as any;
+      if (!cfg || (!cfg.path && !cfg.dir)) throw new Error('tail_path_required');
     }
     if (def.type === 'webhook') {
       const cfg = def.config as any;

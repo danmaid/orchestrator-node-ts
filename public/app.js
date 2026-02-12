@@ -554,7 +554,7 @@
       topic: 'logs/app',
       source: 'input:tail-log',
       eventType: 'log',
-      config: { path: '/tmp/app.log', from: 'end', codec: 'utf8', pollIntervalMs: 500 }
+      config: { dir: '/tmp/zabbix', from: 'end', codec: 'utf8', pollIntervalMs: 500 }
     },
     timerInput: {
       name: 'timer-clock',
