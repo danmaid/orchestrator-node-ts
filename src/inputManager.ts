@@ -229,6 +229,7 @@ class TailFollower {
   start() {
     if (!this.stopped && this.timer) return;
     this.stopped = false;
+    console.log(`[tail] start path=${this.cfg.path ?? '-'}`);
     this.openFile().finally(() => {
       if (this.cfg.watch !== false) this.startWatcher();
       this.loop();
@@ -237,6 +238,7 @@ class TailFollower {
 
   stop() {
     this.stopped = true;
+    console.log(`[tail] stop path=${this.cfg.path ?? '-'}`);
     if (this.timer) {
       clearTimeout(this.timer);
       this.timer = null;
@@ -287,6 +289,7 @@ class TailFollower {
       this.inode = stat.ino;
       this.fd = await fs.promises.open(this.cfg.path, 'r');
       this.offset = this.startAtEnd ? stat.size : 0;
+      console.log(`[tail] opened file=${this.cfg.path} size=${stat.size} inode=${stat.ino}`);
     } catch (_) {
       // ignore missing file
     }
@@ -340,6 +343,7 @@ class TailFollower {
         progressed = readTotal > 0;
       }
     } catch (_) {
+      console.warn(`[tail] poll error path=${this.cfg.path ?? '-'}`);
       await this.closeFile();
       await this.openFile();
     } finally {
@@ -403,6 +407,7 @@ class MultiTailFollower {
   start() {
     if (this.stopped === false && (this.watcher || this.scanLoopTimer)) return;
     this.stopped = false;
+    console.log(`[tail] multi start dir=${this.dir}`);
     this.scanNow();
     if (this.cfg.watch !== false) {
       this.startWatcher();
@@ -413,6 +418,7 @@ class MultiTailFollower {
 
   stop() {
     this.stopped = true;
+    console.log(`[tail] multi stop dir=${this.dir}`);
     this.stopWatcher();
     if (this.scanTimer) {
       clearTimeout(this.scanTimer);
@@ -476,10 +482,15 @@ class MultiTailFollower {
           .map((n) => path.join(this.dir, n))
       );
 
+      if (want.size === 0) {
+        console.log(`[tail] scan dir=${this.dir} matched=0`);
+      }
+
       for (const abs of want) {
         if (this.stopped) break;
         if (this.tailers.has(abs)) continue;
         const fileCfg: TailInputConfig = { ...this.cfg, path: abs, dir: undefined };
+        console.log(`[tail] attach file=${abs}`);
         const t = new TailFollower(fileCfg, (payload, meta) =>
           this.onLine(payload, { ...meta, dir: this.dir, file: path.basename(abs) })
         );
@@ -494,6 +505,7 @@ class MultiTailFollower {
         }
       }
     } catch (_) {
+      console.warn(`[tail] scan error dir=${this.dir}`);
       // ignore scan errors
     } finally {
       this.scanning = false;
