@@ -365,27 +365,3 @@ function appendQuery(url: string, params: Record<string, any>) {
   return `${url}${url.includes('?') ? '&' : '?'}${queryPairs.join('&')}`;
 }
 
-export function createDefaultEnrichmentService() {
-  const providers: EnrichmentProvider[] = [
-    new ListProvider({
-      id: 'prefectures',
-      list: {
-        1: { code: 1, name: '北海道' },
-        13: { code: 13, name: '東京都' },
-        27: { code: 27, name: '大阪府' }
-      },
-      keyParam: 'code',
-      ttlMs: 10 * 60 * 1000
-    }),
-    new HttpGetProvider({
-      id: 'jsonplaceholder-user',
-      urlTemplate: 'https://jsonplaceholder.typicode.com/users/{id}',
-      ttlMs: 5 * 60 * 1000,
-      timeoutMs: 4000
-    })
-  ];
-
-  const service = new EnrichmentService(providers, 60_000);
-  service.start();
-  return service;
-}

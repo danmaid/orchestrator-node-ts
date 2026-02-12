@@ -8,7 +8,8 @@ import { SSEHub } from './sse';
 import { EventBus } from './eventBus';
 import { InputDefinition, InputType, LogicDefinition, LogicType, OrchestratorEvent, WebhookLogicConfig, WorkflowDefinition } from './types';
 import { WorkflowEngine } from './workflowEngine';
-import { WebhookProvider, createDefaultEnrichmentService } from './enrichment';
+import { WebhookProvider } from './enrichment';
+import { createDefaultEnrichmentService, getBuiltinLogicDefinitions, getRxjsLogicDefinitions } from './logics';
 import { InputManager, normalizeWebhookPath } from './inputManager';
 
 export function createApi(staticDir: string) {
@@ -43,48 +44,19 @@ export function createApi(staticDir: string) {
 
   const logicStore = new Map<string, LogicDefinition>();
 
-  function buildBuiltinLogicDefinition(p: { id: string; ttlMs?: number; refreshIntervalMs?: number; hasRefresh?: boolean }) {
-    return {
-      id: p.id,
-      name: p.id,
-      type: 'builtin',
-      enabled: true,
-      description: 'built-in provider',
-      config: {
-        ttlMs: p.ttlMs,
-        refreshIntervalMs: p.refreshIntervalMs,
-        refreshable: !!p.hasRefresh
-      }
-    } as LogicDefinition;
-  }
-
   function syncBuiltinLogics() {
     const providers = enrichment.listProviders();
-    const providerIds = new Set(providers.map((p) => p.id));
-    const builtinIds = new Set<string>([...providerIds, 'loopback']);
+    const builtinDefs = getBuiltinLogicDefinitions(providers);
+    const rxjsDefs = getRxjsLogicDefinitions();
+    const allDefs = [...builtinDefs, ...rxjsDefs];
+    const builtinIds = new Set<string>(allDefs.map((d) => d.id));
 
-    for (const p of providers) {
-      const existing = logicStore.get(p.id);
-      if (!existing || existing.type === 'builtin') {
-        logicStore.set(p.id, buildBuiltinLogicDefinition(p));
-      }
-    }
-
-    const loopbackLogic: LogicDefinition = {
-      id: 'loopback',
-      name: 'loopback',
-      type: 'builtin',
-      enabled: true,
-      description: 'built-in loopback logic',
-      config: { target: 'input/loopback' }
-    };
-    const existingLoopback = logicStore.get('loopback');
-    if (!existingLoopback || existingLoopback.type === 'builtin') {
-      logicStore.set('loopback', loopbackLogic);
+    for (const def of allDefs) {
+      logicStore.set(def.id, def);
     }
 
     for (const [id, def] of logicStore.entries()) {
-      if (def.type !== 'builtin') continue;
+      if (def.type === 'webhook') continue;
       if (!builtinIds.has(id)) logicStore.delete(id);
     }
   }
