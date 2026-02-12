@@ -215,12 +215,24 @@
         </div>
       </div>
       <div class="panel-body">
-        <div class="table-wrap">
-          <table id="outputsTable">
-            <thead><tr><th>id</th><th>name</th><th>type</th><th>enabled</th><th>channel</th><th>path</th><th>builtin</th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
+        <section id="output-defs" class="panel-section">
+          <h3>Output Definitions</h3>
+          <div class="table-wrap">
+            <table id="outputsDefsTable">
+              <thead><tr><th>id</th><th>name</th><th>type</th><th>enabled</th><th>channel</th><th>path</th><th>builtin</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
+        <section id="output-events" class="panel-section">
+          <h3>Output Events</h3>
+          <div class="table-wrap">
+            <table id="outputsEventsTable">
+              <thead><tr><th>time</th><th>source</th><th>topic</th><th>type</th><th>payload</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
       </div>
     </section>
 

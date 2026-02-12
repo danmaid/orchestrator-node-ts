@@ -61,10 +61,10 @@ export class WorkflowEngine {
     if (def.sourceTopics && def.sourceTopics.length > 0) {
       const topicSet = new Set(def.sourceTopics);
       const byTopics$ = this.bus.mergeTopics(def.sourceTopics).pipe(
-        filter(ev => acceptAllInputs || !ev.meta?.workflowId || ev.meta.workflowId === def.id)
+        filter(ev => acceptAllInputs || ev.meta?.internal || !ev.meta?.workflowId || ev.meta.workflowId === def.id)
       );
       const bound$ = this.bus.input$.pipe(
-        filter(ev => (acceptAllInputs || ev.meta?.workflowId === def.id) && !topicSet.has(ev.topic))
+        filter(ev => (acceptAllInputs || ev.meta?.internal || ev.meta?.workflowId === def.id) && !topicSet.has(ev.topic))
       );
       source$ = rxMerge(byTopics$, bound$);
     } else {

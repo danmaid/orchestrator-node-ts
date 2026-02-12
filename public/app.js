@@ -122,7 +122,8 @@
   // Inputs table & form
   const inputsTbody = qs('#inputsTable tbody');
   const inputDefsTbody = qs('#inputDefsTable tbody');
-  const outputsTbody = qs('#outputsTable tbody');
+  const outputsDefsTbody = qs('#outputsDefsTable tbody');
+  const outputsEventsTbody = qs('#outputsEventsTable tbody');
   const wfTbody = qs('#wfTable tbody');
   const wfDetail = qs('#wfDetail');
   const enrichTbody = qs('#enrichTable tbody');
@@ -144,7 +145,7 @@
     ]);
     renderInputDefs(inputDefs.data);
     renderEvents(inputsTbody, ins.data);
-    renderOutputs(outputsTbody, outputs.data || []);
+    renderOutputs(outputsDefsTbody, outputs.data || []);
     renderWfs(wfs.data);
     refreshLogics();
   }
@@ -683,7 +684,7 @@
   });
   connectSSE('/outputs/stream', (msg)=>{
     if (msg && msg.data){
-      renderEvents(outputsTbody, [msg.data]);
+      renderEvents(outputsEventsTbody, [msg.data]);
     }
   });
 
