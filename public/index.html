@@ -32,6 +32,10 @@
     <section class="panel panel-input" data-route="inputs">
       <div class="panel-header">
         <h2 class="panel-title"><span class="panel-icon" aria-hidden="true">📥</span><a href="/v1/orchestrator/inputs" data-route-link="inputs">input</a></h2>
+        <div class="panel-metric panel-metric--input" aria-label="Input throughput">
+          <span class="metric-value" id="inputRateValue">0 events/sec</span>
+          <span class="metric-bar" aria-hidden="true"><span class="metric-fill" id="inputRateBar"></span></span>
+        </div>
       </div>
       <div class="panel-body">
         <section id="input-defs" class="panel-section">
@@ -43,6 +47,7 @@
                 <option value="webhook" selected>webhook</option>
                 <option value="udp">udp</option>
                 <option value="tail">tail</option>
+                <option value="timer">timer</option>
               </select>
             </label>
             <label>enabled <input type="checkbox" name="enabled" checked></label>
@@ -60,6 +65,7 @@
               <button type="button" id="sampleWebhookBtn">Sample: Webhook</button>
               <button type="button" id="sampleUdpBtn">Sample: UDP</button>
               <button type="button" id="sampleTailBtn">Sample: Tail</button>
+              <button type="button" id="sampleTimerBtn">Sample: Timer</button>
             </div>
           </form>
           <div class="table-wrap">
@@ -203,6 +209,10 @@
     <section class="panel panel-output" id="outputs" data-route="outputs">
       <div class="panel-header">
         <h2 class="panel-title"><span class="panel-icon" aria-hidden="true">📤</span><a href="/v1/orchestrator/outputs" data-route-link="outputs">output</a></h2>
+        <div class="panel-metric panel-metric--output" aria-label="Output throughput">
+          <span class="metric-value" id="outputRateValue">0 events/sec</span>
+          <span class="metric-bar" aria-hidden="true"><span class="metric-fill" id="outputRateBar"></span></span>
+        </div>
       </div>
       <div class="panel-body">
         <div class="table-wrap">

@@ -9,6 +9,37 @@
   const fmt = (o) => typeof o === 'string' ? o : JSON.stringify(o);
   const td = (text) => { const d = document.createElement('td'); d.textContent = text; return d; };
 
+  function tdEnabledToggle(enabled, opts) {
+    const cell = document.createElement('td');
+    const disabled = opts && opts.disabled;
+    if (disabled) {
+      const text = document.createElement('span');
+      text.textContent = String(!!enabled);
+      cell.append(text);
+      const badge = document.createElement('span');
+      badge.className = 'muted';
+      badge.style.marginLeft = '6px';
+      badge.textContent = 'read-only';
+      cell.append(badge);
+      return cell;
+    }
+
+    const btn = document.createElement('button');
+    btn.className = 'btn-toggle';
+    btn.textContent = String(!!enabled);
+    btn.onclick = async (ev) => {
+      ev.stopPropagation();
+      btn.disabled = true;
+      try {
+        await opts.onToggle();
+      } finally {
+        btn.disabled = false;
+      }
+    };
+    cell.append(btn);
+    return cell;
+  }
+
   const routePanels = Array.from(document.querySelectorAll('[data-route]'));
   const detailOnlyElems = Array.from(document.querySelectorAll('[data-detail-only]'));
   const panelRowBottom = document.querySelector('.panel-row-bottom');
@@ -98,6 +129,10 @@
   const enrichCacheSize = qs('#enrichCacheSize');
   const logicTbody = qs('#logicTable tbody');
   const logicDetail = qs('#logicDetail');
+  const inputRateValue = qs('#inputRateValue');
+  const inputRateBar = qs('#inputRateBar');
+  const outputRateValue = qs('#outputRateValue');
+  const outputRateBar = qs('#outputRateBar');
   let selectedLogicId = null;
 
   async function refreshTables(){
@@ -156,7 +191,13 @@
       tr.append(td(def.id));
       tr.append(td(def.name || ''));
       tr.append(td(def.type || ''));
-      tr.append(td(String(!!def.enabled)));
+      tr.append(tdEnabledToggle(!!def.enabled, {
+        disabled: !!def.builtin,
+        onToggle: async ()=>{
+          await fetch(apiBase + `/outputs/${def.id}/${def.enabled ? 'disable' : 'enable'}`, {method:'POST'});
+          refreshTables();
+        }
+      }));
       tr.append(td(def.config?.channel || ''));
       tr.append(td(def.config?.path || ''));
       tr.append(td(String(!!def.builtin)));
@@ -172,7 +213,13 @@
       tr.append(td(def.id));
       tr.append(td(def.name));
       tr.append(td(def.type));
-      tr.append(td(String(def.enabled)));
+      tr.append(tdEnabledToggle(!!def.enabled, {
+        disabled: def.type === 'loopback',
+        onToggle: async ()=>{
+          await fetch(apiBase + `/inputs/${def.id}/${def.enabled ? 'disable':'enable'}`, {method:'POST'});
+          refreshTables();
+        }
+      }));
       tr.append(td(def.workflowId || ''));
       tr.append(td(def.topic || ''));
       tr.append(td(def.source || ''));
@@ -209,7 +256,13 @@
       const tr = document.createElement('tr');
       tr.append(td(wf.id));
       tr.append(td(wf.name));
-      tr.append(td(String(wf.enabled)));
+      tr.append(tdEnabledToggle(!!wf.enabled, {
+        disabled: false,
+        onToggle: async ()=>{
+          await fetch(apiBase + `/workflows/${wf.id}/${wf.enabled ? 'disable':'enable'}`, {method:'POST'});
+          refreshTables();
+        }
+      }));
       tr.append(td((wf.sourceTopics||[]).join(',')));
       tr.append(td(wf.outputTopic||''));
       tr.style.cursor = 'pointer';
@@ -267,6 +320,19 @@
     return String(str).replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
   }
 
+  function formatRate(rate) {
+    if (!Number.isFinite(rate) || rate < 0) return '0 events/sec';
+    const rounded = rate >= 10 ? Math.round(rate) : Math.round(rate * 10) / 10;
+    return `${rounded} events/sec`;
+  }
+
+  function setRate(valueEl, barEl, rate, maxRate = 200) {
+    if (!valueEl || !barEl) return;
+    valueEl.textContent = formatRate(rate);
+    const pct = Math.min(100, Math.max(0, (rate / maxRate) * 100));
+    barEl.style.width = `${pct}%`;
+  }
+
   function renderEnrichments(rows){
     if (!enrichTbody) return;
     enrichTbody.innerHTML='';
@@ -306,7 +372,17 @@
       tr.append(td(def.id));
       tr.append(td(def.name));
       tr.append(td(def.type));
-      tr.append(td(String(!!def.enabled)));
+      tr.append(tdEnabledToggle(!!def.enabled, {
+        disabled: def.type !== 'webhook',
+        onToggle: async ()=>{
+          await fetch(apiBase + `/logics/${def.id}`, {
+            method:'PATCH',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ enabled: !def.enabled })
+          });
+          refreshLogics();
+        }
+      }));
       tr.append(td(JSON.stringify(def.config || {})));
       const actions = document.createElement('td');
 
@@ -479,6 +555,15 @@
       eventType: 'log',
       config: { path: '/tmp/app.log', from: 'end', codec: 'utf8', pollIntervalMs: 500 }
     },
+    timerInput: {
+      name: 'timer-clock',
+      type: 'timer',
+      enabled: true,
+      topic: 'clock/tick',
+      source: 'input:timer-clock',
+      eventType: 'tick',
+      config: { intervalMs: 1000, emitOnStart: true, payload: { kind: 'clock' } }
+    },
     workflowAggregate: {
       name: 'wf-aggregate',
       enabled: true,
@@ -561,6 +646,8 @@
   if (sampleUdpBtn) sampleUdpBtn.onclick = ()=>fillInputDef(samples.udpInput);
   const sampleTailBtn = qs('#sampleTailBtn');
   if (sampleTailBtn) sampleTailBtn.onclick = ()=>fillInputDef(samples.tailInput);
+  const sampleTimerBtn = qs('#sampleTimerBtn');
+  if (sampleTimerBtn) sampleTimerBtn.onclick = ()=>fillInputDef(samples.timerInput);
   const sampleLogicBtn = qs('#sampleLogicBtn');
   if (sampleLogicBtn) sampleLogicBtn.onclick = ()=>fillLogicDef(samples.logicWebhook);
 
@@ -595,7 +682,23 @@
     if (msg && msg.data){ renderEvents(inputsTbody, [msg.data]); }
   });
   connectSSE('/outputs/stream', (msg)=>{
-    if (msg && msg.data){ renderEvents(outputsTbody, [msg.data]); }
+    if (msg && msg.data){
+      renderEvents(outputsTbody, [msg.data]);
+    }
+  });
+
+  connectSSE('/outputs/metrics', (msg)=>{
+    const ev = msg && msg.data ? msg.data : null;
+    const count = ev?.payload?.count;
+    const windowMs = ev?.payload?.windowMs || 1000;
+    if (typeof count === 'number') {
+      const rate = count / (windowMs / 1000);
+      if (ev?.topic === 'metrics/inputs') {
+        setRate(inputRateValue, inputRateBar, rate);
+      } else if (ev?.topic === 'metrics/outputs') {
+        setRate(outputRateValue, outputRateBar, rate);
+      }
+    }
   });
   connectSSE('/workflows/stream', ()=>{ refreshTables(); });
 

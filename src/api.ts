@@ -66,6 +66,8 @@ export function createApi(staticDir: string) {
 
   syncBuiltinLogics();
 
+  const INTERNAL_OUTPUT_METRICS_TOPIC = 'metrics/internal-output';
+
   const engine = new WorkflowEngine(
     bus,
     (ev, outDef) => { // onOutput
@@ -73,6 +75,22 @@ export function createApi(staticDir: string) {
       bus.publishOutput(ev);
       sse.publish('outputs', { kind: 'output', data: ev });
       sse.publish('events', { kind: 'output', data: ev });
+
+      if (String(ev.topic || '').startsWith('metrics/')) {
+        sse.publish('metrics', { kind: 'metrics', data: ev });
+        ws.publish('metrics', { kind: 'metrics', data: ev });
+      } else {
+        const internalEvent: OrchestratorEvent = {
+          id: randomUUID(),
+          timestamp: new Date().toISOString(),
+          source: ev.source || 'output',
+          topic: INTERNAL_OUTPUT_METRICS_TOPIC,
+          type: 'output_internal',
+          payload: { topic: ev.topic, type: ev.type },
+          meta: { internal: true, workflowId: ev.meta?.workflowId }
+        };
+        bus.topic$(INTERNAL_OUTPUT_METRICS_TOPIC).next(internalEvent);
+      }
 
       if (outDef?.type === 'broadcast') {
         const channel = isChannelName(outDef.channel || '') ? outDef.channel! : 'broadcast';
@@ -95,6 +113,41 @@ export function createApi(staticDir: string) {
   // Workflows CRUD
   const wfStore = new Map<string, WorkflowDefinition>();
 
+  const BUILTIN_WORKFLOWS: WorkflowDefinition[] = [
+    {
+      id: 'wf-metrics-input-rate',
+      name: 'wf-metrics-input-rate',
+      enabled: true,
+      description: 'built-in input throughput aggregator',
+      sourceTopics: [],
+      steps: [
+        { type: 'aggregateCount', windowMs: 1000, outputTopic: 'metrics/inputs', eventType: 'metrics_rate' }
+      ],
+      outputTopic: 'metrics/inputs'
+    },
+    {
+      id: 'wf-metrics-output-rate',
+      name: 'wf-metrics-output-rate',
+      enabled: true,
+      description: 'built-in output throughput aggregator',
+      sourceTopics: [INTERNAL_OUTPUT_METRICS_TOPIC],
+      steps: [
+        { type: 'aggregateCount', windowMs: 1000, outputTopic: 'metrics/outputs', eventType: 'metrics_rate' }
+      ],
+      outputTopic: 'metrics/outputs'
+    }
+  ];
+  const builtinWorkflowIds = new Set(BUILTIN_WORKFLOWS.map((wf) => wf.id));
+
+  function syncBuiltinWorkflows() {
+    for (const wf of BUILTIN_WORKFLOWS) {
+      wfStore.set(wf.id, wf);
+      engine.upsert(wf);
+    }
+  }
+
+  syncBuiltinWorkflows();
+
   const BASE_PATH = '/v1/orchestrator';
   const MAX_BODY_BYTES = 2 * 1024 * 1024;
 
@@ -115,6 +168,24 @@ export function createApi(staticDir: string) {
       enabled: true,
       description: 'built-in outputs WebSocket stream',
       config: { path: `${BASE_PATH}/outputs/stream`, channel: 'outputs' },
+      builtin: true
+    },
+    {
+      id: 'metrics-sse',
+      name: 'outputs/metrics',
+      type: 'sse',
+      enabled: true,
+      description: 'built-in metrics SSE stream',
+      config: { path: `${BASE_PATH}/outputs/metrics`, channel: 'metrics' },
+      builtin: true
+    },
+    {
+      id: 'metrics-ws',
+      name: 'outputs/metrics',
+      type: 'ws',
+      enabled: true,
+      description: 'built-in metrics WebSocket stream',
+      config: { path: `${BASE_PATH}/outputs/metrics`, channel: 'metrics' },
       builtin: true
     }
   ];
@@ -258,7 +329,7 @@ export function createApi(staticDir: string) {
 
   function buildInputDefinition(body: any, idOverride?: string): InputDefinition {
     const type = body?.type as InputType | undefined;
-    if (!type || !['webhook', 'udp', 'tail'].includes(type)) {
+    if (!type || !['webhook', 'udp', 'tail', 'timer'].includes(type)) {
       throw new Error('invalid_input_type');
     }
 
@@ -287,6 +358,12 @@ export function createApi(staticDir: string) {
       const cfg = def.config as any;
       if (cfg?.path) cfg.path = normalizeWebhookPath(cfg.path);
       if (cfg?.method) cfg.method = String(cfg.method).toUpperCase();
+    }
+    if (def.type === 'timer') {
+      const cfg = def.config as any;
+      if (cfg?.intervalMs !== undefined && (typeof cfg.intervalMs !== 'number' || !Number.isFinite(cfg.intervalMs))) {
+        throw new Error('timer_interval_invalid');
+      }
     }
     return def;
   }
@@ -434,6 +511,7 @@ export function createApi(staticDir: string) {
         } catch (err: any) {
           if (err?.message === 'payload_too_large') return sendJson(res, 413, { error: 'payload too large' });
           if (err?.message === 'invalid_input_type') return sendJson(res, 400, { error: 'invalid_input_type' });
+          if (err?.message === 'timer_interval_invalid') return sendJson(res, 400, { error: 'timer_interval_invalid' });
           if (err?.message === 'udp_port_required') return sendJson(res, 400, { error: 'udp_port_required' });
           if (err?.message === 'tail_path_required') return sendJson(res, 400, { error: 'tail_path_required' });
           if (err?.message === 'webhook_path_conflict') return sendJson(res, 409, { error: 'webhook_path_conflict' });
@@ -459,6 +537,7 @@ export function createApi(staticDir: string) {
         } catch (err: any) {
           if (err?.message === 'payload_too_large') return sendJson(res, 413, { error: 'payload too large' });
           if (err?.message === 'invalid_input_type') return sendJson(res, 400, { error: 'invalid_input_type' });
+          if (err?.message === 'timer_interval_invalid') return sendJson(res, 400, { error: 'timer_interval_invalid' });
           if (err?.message === 'udp_port_required') return sendJson(res, 400, { error: 'udp_port_required' });
           if (err?.message === 'tail_path_required') return sendJson(res, 400, { error: 'tail_path_required' });
           if (err?.message === 'webhook_path_conflict') return sendJson(res, 409, { error: 'webhook_path_conflict' });
@@ -481,6 +560,7 @@ export function createApi(staticDir: string) {
         } catch (err: any) {
           if (err?.message === 'payload_too_large') return sendJson(res, 413, { error: 'payload too large' });
           if (err?.message === 'invalid_input_type') return sendJson(res, 400, { error: 'invalid_input_type' });
+          if (err?.message === 'timer_interval_invalid') return sendJson(res, 400, { error: 'timer_interval_invalid' });
           if (err?.message === 'udp_port_required') return sendJson(res, 400, { error: 'udp_port_required' });
           if (err?.message === 'tail_path_required') return sendJson(res, 400, { error: 'tail_path_required' });
           if (err?.message === 'webhook_path_conflict') return sendJson(res, 409, { error: 'webhook_path_conflict' });
@@ -552,6 +632,11 @@ export function createApi(staticDir: string) {
 
     // Outputs (definitions)
     if (segments[0] === 'outputs') {
+      if (segments.length === 2 && segments[1] === 'metrics' && method === 'GET') {
+        if (!isSseRequest(req)) return sendStreamHelp(res, '/v1/orchestrator/outputs/metrics');
+        sse.addClient('metrics', req, res);
+        return;
+      }
       if (segments.length === 2 && segments[1] === 'stream' && method === 'GET') {
         if (!isSseRequest(req)) return sendStreamHelp(res, '/v1/orchestrator/outputs/stream');
         sse.addClient('outputs', req, res);
@@ -649,6 +734,7 @@ export function createApi(staticDir: string) {
     }
 
 
+
     // Events (consolidated stream)
     if (segments[0] === 'events') {
       if (segments.length === 2 && segments[1] === 'stream' && method === 'GET') {
@@ -687,6 +773,7 @@ export function createApi(staticDir: string) {
         try {
           const body = await readJsonBody(req);
           const id = body.id || randomUUID();
+          if (builtinWorkflowIds.has(id)) return sendJson(res, 409, { error: 'builtin_workflow_id_conflict' });
           const wf: WorkflowDefinition = {
             id,
             name: body.name || `wf-${id.slice(0, 8)}`,
@@ -714,6 +801,7 @@ export function createApi(staticDir: string) {
       if (segments.length === 2 && method === 'PUT') {
         const id = segments[1];
         if (!wfStore.has(id)) return sendJson(res, 404, { error: 'not found' });
+        if (builtinWorkflowIds.has(id)) return sendJson(res, 400, { error: 'builtin_workflow_is_readonly' });
         try {
           const body = await readJsonBody(req);
           const wf: WorkflowDefinition = {
@@ -739,6 +827,7 @@ export function createApi(staticDir: string) {
         const id = segments[1];
         const old = wfStore.get(id);
         if (!old) return sendJson(res, 404, { error: 'not found' });
+        if (builtinWorkflowIds.has(id)) return sendJson(res, 400, { error: 'builtin_workflow_is_readonly' });
         try {
           const body = await readJsonBody(req);
           const wf = { ...old, ...body } as WorkflowDefinition;
@@ -753,6 +842,7 @@ export function createApi(staticDir: string) {
       if (segments.length === 2 && method === 'DELETE') {
         const id = segments[1];
         if (!wfStore.has(id)) return sendJson(res, 404, { error: 'not found' });
+        if (builtinWorkflowIds.has(id)) return sendJson(res, 400, { error: 'builtin_workflow_is_readonly' });
         wfStore.delete(id);
         engine.remove(id);
         res.statusCode = 204;

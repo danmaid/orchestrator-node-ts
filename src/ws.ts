@@ -2,7 +2,7 @@ import { IncomingMessage } from 'http';
 import WebSocket, { WebSocketServer } from 'ws';
 import { ChannelName } from './types';
 
-export const channelNames: ChannelName[] = ['inputs', 'outputs', 'workflows', 'events', 'broadcast'];
+export const channelNames: ChannelName[] = ['inputs', 'outputs', 'workflows', 'events', 'broadcast', 'metrics'];
 
 export function isChannelName(value: string): value is ChannelName {
   return channelNames.includes(value as ChannelName);
@@ -21,6 +21,7 @@ export class WsHub {
     workflows: new Map(),
     events: new Map(),
     broadcast: new Map(),
+    metrics: new Map(),
   };
 
   handleUpgrade(req: IncomingMessage, socket: any, head: Buffer, channel: ChannelName) {

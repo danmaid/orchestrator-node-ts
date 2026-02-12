@@ -11,6 +11,7 @@ export class SSEHub {
     workflows: new Map(),
     events: new Map(),
     broadcast: new Map(),
+    metrics: new Map(),
   };
 
   addClient(channel: ChannelName, req: IncomingMessage, res: ServerResponse) {

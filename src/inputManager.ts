@@ -2,7 +2,7 @@
 import dgram from 'dgram';
 import fs from 'fs';
 import { randomUUID } from 'crypto';
-import { OrchestratorEvent, InputDefinition, UdpInputConfig, TailInputConfig, WebhookInputConfig } from './types';
+import { OrchestratorEvent, InputDefinition, UdpInputConfig, TailInputConfig, TimerInputConfig, WebhookInputConfig } from './types';
 
 export interface WebhookRoute {
   key: string;
@@ -72,6 +72,9 @@ export class InputManager {
     if (def.type === 'tail') {
       return this.startTail(def);
     }
+    if (def.type === 'timer') {
+      return this.startTimer(def);
+    }
     return undefined; // webhook is handled in API
   }
 
@@ -116,6 +119,34 @@ export class InputManager {
     return {
       status: 'running',
       stop: () => follower.stop()
+    };
+  }
+
+  private startTimer(def: InputDefinition): InputRuntime {
+    const cfg = def.config as TimerInputConfig;
+    const intervalMs = typeof cfg.intervalMs === 'number' && cfg.intervalMs > 0 ? cfg.intervalMs : 1000;
+    let seq = 0;
+
+    const emitTick = () => {
+      const now = new Date();
+      const payload = {
+        ...(cfg.payload || {}),
+        now: now.toISOString(),
+        epochMs: now.getTime(),
+        seq
+      };
+      seq += 1;
+      this.emitFromInput(def, payload, { timer: true });
+    };
+
+    if (cfg.emitOnStart) emitTick();
+    const timer = setInterval(emitTick, intervalMs);
+
+    return {
+      status: 'running',
+      stop: () => {
+        clearInterval(timer);
+      }
     };
   }
 

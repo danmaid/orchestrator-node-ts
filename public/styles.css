@@ -74,6 +74,10 @@ section { margin-bottom: 0; }
 .panel-header {
 	padding: 10px 12px 6px;
 	border-bottom: 1px solid #eef2f7;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
 }
 .panel-title {
 	margin: 0;
@@ -90,6 +94,37 @@ section { margin-bottom: 0; }
 .panel-icon {
 	font-size: 14px;
 	line-height: 1;
+}
+.panel-metric {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 160px;
+	justify-content: flex-end;
+}
+.panel-metric .metric-value {
+	font-size: 11px;
+	color: #0f172a;
+	min-width: 86px;
+	text-align: right;
+}
+.panel-metric .metric-bar {
+	position: relative;
+	width: 140px;
+	height: 6px;
+	background: #e2e8f0;
+	border-radius: 999px;
+	overflow: hidden;
+}
+.panel-metric .metric-fill {
+	height: 100%;
+	width: 0%;
+	display: block;
+	background: linear-gradient(90deg, #22c55e, #10b981);
+	transition: width 0.2s ease;
+}
+.panel-metric--output .metric-fill {
+	background: linear-gradient(90deg, #f97316, #fb7185);
 }
 .panel-body {
 	padding: 8px 10px 10px;
@@ -123,6 +158,16 @@ th, td { padding: 6px 8px; border: 1px solid #ddd; font-size: 12px; }
 form { display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; margin-bottom: 12px; }
 textarea { min-height: 90px; }
 button { padding:6px 10px; }
+.btn-toggle {
+	padding: 4px 8px;
+	font-size: 11px;
+	border: 1px solid #cbd5f5;
+	background: #eff6ff;
+	color: #1e3a8a;
+	cursor: pointer;
+}
+.btn-toggle:hover { background: #dbeafe; }
+.btn-toggle:disabled { opacity: 0.6; cursor: not-allowed; }
 pre { background:#f6f8fa; border:1px solid #e5e7eb; padding:10px; overflow:auto; }
 code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size: 12px; }
 .toolbar { display:flex; gap: 8px; align-items:center; margin: 8px 0 12px; flex-wrap: wrap; }

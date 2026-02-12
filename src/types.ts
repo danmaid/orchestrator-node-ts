@@ -9,7 +9,7 @@ export interface OrchestratorEvent {
   meta?: Record<string, any>;
 }
 
-export type InputType = 'webhook' | 'udp' | 'tail' | 'loopback';
+export type InputType = 'webhook' | 'udp' | 'tail' | 'timer' | 'loopback';
 
 export type InputMode = 'raw' | 'aggregate';
 
@@ -32,9 +32,15 @@ export interface TailInputConfig {
   pollIntervalMs?: number;
 }
 
+export interface TimerInputConfig {
+  intervalMs?: number;
+  emitOnStart?: boolean;
+  payload?: any;
+}
+
 export interface LoopbackInputConfig {}
 
-export type InputConfig = WebhookInputConfig | UdpInputConfig | TailInputConfig | LoopbackInputConfig;
+export type InputConfig = WebhookInputConfig | UdpInputConfig | TailInputConfig | TimerInputConfig | LoopbackInputConfig;
 
 export interface InputDefinition {
   id: string;
@@ -50,7 +56,7 @@ export interface InputDefinition {
   config: InputConfig;
 }
 
-export type ChannelName = 'inputs' | 'outputs' | 'workflows' | 'events' | 'broadcast';
+export type ChannelName = 'inputs' | 'outputs' | 'workflows' | 'events' | 'broadcast' | 'metrics';
 
 export type OutputType = 'sse' | 'ws';
 

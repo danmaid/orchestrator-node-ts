@@ -422,7 +422,7 @@ components:
       properties:
         id: { type: string }
         name: { type: string }
-        type: { type: string, enum: [webhook, udp, tail, loopback] }
+        type: { type: string, enum: [webhook, udp, tail, timer, loopback] }
         enabled: { type: boolean }
         description: { type: string }
         workflowId: { type: string }
@@ -435,6 +435,7 @@ components:
             - $ref: '#/components/schemas/WebhookInputConfig'
             - $ref: '#/components/schemas/UdpInputConfig'
             - $ref: '#/components/schemas/TailInputConfig'
+            - $ref: '#/components/schemas/TimerInputConfig'
             - { type: object }
     WebhookInputConfig:
       type: object
@@ -457,6 +458,12 @@ components:
         from: { type: string, enum: [start, end] }
         codec: { type: string, enum: [utf8, json] }
         pollIntervalMs: { type: integer }
+    TimerInputConfig:
+      type: object
+      properties:
+        intervalMs: { type: integer }
+        emitOnStart: { type: boolean }
+        payload: { type: object }
     Workflow:
       type: object
       required: [name, enabled, steps]
