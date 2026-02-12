@@ -342,8 +342,9 @@ class TailFollower {
         this.offset += readTotal;
         progressed = readTotal > 0;
       }
-    } catch (_) {
-      console.warn(`[tail] poll error path=${this.cfg.path ?? '-'}`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[tail] poll error path=${this.cfg.path ?? '-'} err=${msg}`);
       await this.closeFile();
       await this.openFile();
     } finally {
@@ -395,9 +396,7 @@ class MultiTailFollower {
   constructor(private cfg: TailInputConfig, private onLine: (payload: any, meta: Record<string, any>) => void) {
     this.dir = cfg.dir || '';
     this.patterns = buildRegexList(cfg.patterns, [
-      '^(problems|history)-.*\\.ndjson$',
-      '^problems-.*-(main-process|task-manager)-\\d+\\.ndjson$',
-      '^history-.*-(main-process|task-manager)-\\d+\\.ndjson$'
+      '^(problems|history)-.*\\.ndjson$'
     ]);
     this.ignore = buildRegexList(cfg.ignorePatterns, [/\.old$/]);
     this.scanIntervalMs = cfg.scanIntervalMs ?? Math.max(cfg.pollIntervalMs ?? 1000, 500);
@@ -504,8 +503,9 @@ class MultiTailFollower {
           this.tailers.delete(abs);
         }
       }
-    } catch (_) {
-      console.warn(`[tail] scan error dir=${this.dir}`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[tail] scan error dir=${this.dir} err=${msg}`);
       // ignore scan errors
     } finally {
       this.scanning = false;
