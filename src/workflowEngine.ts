@@ -57,18 +57,19 @@ export class WorkflowEngine {
     }
 
     let source$: Observable<OrchestratorEvent>;
+    const acceptAllInputs = !!def.acceptAllInputs;
     if (def.sourceTopics && def.sourceTopics.length > 0) {
       const topicSet = new Set(def.sourceTopics);
       const byTopics$ = this.bus.mergeTopics(def.sourceTopics).pipe(
-        filter(ev => !ev.meta?.workflowId || ev.meta.workflowId === def.id)
+        filter(ev => acceptAllInputs || !ev.meta?.workflowId || ev.meta.workflowId === def.id)
       );
       const bound$ = this.bus.input$.pipe(
-        filter(ev => ev.meta?.workflowId === def.id && !topicSet.has(ev.topic))
+        filter(ev => (acceptAllInputs || ev.meta?.workflowId === def.id) && !topicSet.has(ev.topic))
       );
       source$ = rxMerge(byTopics$, bound$);
     } else {
       source$ = this.bus.input$.pipe(
-        filter(ev => !ev.meta?.workflowId || ev.meta.workflowId === def.id)
+        filter(ev => acceptAllInputs || !ev.meta?.workflowId || ev.meta.workflowId === def.id)
       );
     }
 

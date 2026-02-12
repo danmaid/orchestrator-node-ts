@@ -138,6 +138,7 @@ export interface WorkflowDefinition {
   enabled: boolean;
   description?: string;
   sourceTopics?: string[]; // if omitted, consume all inputs
+  acceptAllInputs?: boolean; // ignore workflowId filter when consuming inputs
   steps: StepDefinition[];
   outputTopic?: string;
   loopbackToInput?: boolean; // legacy

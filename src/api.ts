@@ -71,12 +71,17 @@ export function createApi(staticDir: string) {
   const engine = new WorkflowEngine(
     bus,
     (ev, outDef) => { // onOutput
-      outputBuffer.push(ev);
+      const isMetrics = String(ev.topic || '').startsWith('metrics/');
+      if (!isMetrics) {
+        outputBuffer.push(ev);
+      }
       bus.publishOutput(ev);
-      sse.publish('outputs', { kind: 'output', data: ev });
-      sse.publish('events', { kind: 'output', data: ev });
+      if (!isMetrics) {
+        sse.publish('outputs', { kind: 'output', data: ev });
+        sse.publish('events', { kind: 'output', data: ev });
+      }
 
-      if (String(ev.topic || '').startsWith('metrics/')) {
+      if (isMetrics) {
         sse.publish('metrics', { kind: 'metrics', data: ev });
         ws.publish('metrics', { kind: 'metrics', data: ev });
       } else {
@@ -89,7 +94,7 @@ export function createApi(staticDir: string) {
           payload: { topic: ev.topic, type: ev.type },
           meta: { internal: true, workflowId: ev.meta?.workflowId }
         };
-        bus.topic$(INTERNAL_OUTPUT_METRICS_TOPIC).next(internalEvent);
+        bus.publishInternalTopic(internalEvent);
       }
 
       if (outDef?.type === 'broadcast') {
@@ -114,6 +119,16 @@ export function createApi(staticDir: string) {
   const wfStore = new Map<string, WorkflowDefinition>();
 
   const BUILTIN_WORKFLOWS: WorkflowDefinition[] = [
+    {
+      id: 'wf-passthrough-inputs',
+      name: 'wf-passthrough-inputs',
+      enabled: true,
+      description: 'built-in passthrough (inputs -> outputs/default)',
+      acceptAllInputs: true,
+      sourceTopics: [],
+      steps: [],
+      outputTopic: 'outputs/default'
+    },
     {
       id: 'wf-metrics-input-rate',
       name: 'wf-metrics-input-rate',
